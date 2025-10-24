@@ -55,13 +55,17 @@ footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 
 <footer>© 울산도시공사 도서관리 시스템 | CSV 기반 GitHub Pages 뷰어</footer>
 
+<!-- ✅ 안정적 CSV 파서 추가 -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
 <script>
-// CSV 로드
+// CSV 로드 (PapaParse 사용)
 async function loadCSV(file){
   const res = await fetch(file+'?v='+Date.now());
   if(!res.ok) throw new Error(file+' 로드 실패');
   const text = await res.text();
-  return text.trim().split('\n').map(r => r.split(','));
+  const parsed = Papa.parse(text.trim(), {skipEmptyLines:true});
+  return parsed.data;
 }
 
 // 표 렌더링
@@ -76,7 +80,7 @@ function renderTable(rows, id){
   }
 }
 
-// ✅ 디바운싱 + textContent 기반 검색
+// ✅ 빠르고 안전한 검색 (디바운싱 + textContent)
 function addSearch(inputId, tableId){
   const input = document.getElementById(inputId);
   let timer;
@@ -87,14 +91,14 @@ function addSearch(inputId, tableId){
       const trs = document.querySelectorAll(`#${tableId} tr`);
       for(let i=1;i<trs.length;i++){
         const tr = trs[i];
-        const text = tr.textContent; // innerText 대신 textContent
+        const text = tr.textContent;
         tr.style.display = text.includes(val)?'':'none';
       }
-    }, 150); // 입력 후 0.15초 지연
+    }, 150);
   });
 }
 
-// 실행
+// 메인 실행
 Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
   renderTable(books, 'loanTable');
 
