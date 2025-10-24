@@ -6,30 +6,28 @@
 <title>📚 울산도시공사 도서관리 시스템</title>
 <style>
 body {
-  font-family: 'Pretendard','Noto Sans KR',sans-serif;
-  background:#f8fafc; margin:0; padding:25px; color:#222;
+  font-family:'Pretendard','Noto Sans KR',sans-serif;
+  background:#f8fafc;margin:0;padding:25px;color:#222;
 }
-h1 { text-align:center; color:#004080; margin-bottom:10px; }
-nav { text-align:center; margin-bottom:20px; }
-button {
-  background:#004080; color:white; border:none; border-radius:8px;
-  padding:9px 18px; margin:0 5px; cursor:pointer; font-size:15px;
+h1{text-align:center;color:#004080;margin-bottom:10px;}
+nav{text-align:center;margin-bottom:20px;}
+button{
+  background:#004080;color:white;border:none;border-radius:8px;
+  padding:9px 18px;margin:0 5px;cursor:pointer;font-size:15px;
 }
-button.active { background:#2563eb; }
-input {
-  display:block; margin:15px auto 20px; padding:8px 15px; font-size:14px;
-  border:1px solid #ccc; border-radius:6px; width:260px;
+button.active{background:#2563eb;}
+input{
+  display:block;margin:15px auto 20px;padding:8px 15px;font-size:14px;
+  border:1px solid #ccc;border-radius:6px;width:260px;
 }
-.table-wrap {
-  max-height:70vh; overflow:auto; border-radius:8px; background:white;
+.table-wrap{
+  max-height:70vh;overflow:auto;border-radius:8px;background:white;
   box-shadow:0 0 5px rgba(0,0,0,0.08);
 }
-table { width:100%; border-collapse:collapse; min-width:800px; }
-th, td {
-  border:1px solid #e2e8f0; padding:7px 10px; text-align:left; font-size:13.5px;
-}
-th {
-  background:#f1f5f9; color:#004080; position:sticky; top:0; z-index:10;
+table{width:100%;border-collapse:collapse;min-width:800px;}
+th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px;}
+th{
+  background:#f1f5f9;color:#004080;position:sticky;top:0;z-index:10;
 }
 tr:nth-child(even){background:#fafafa;}
 tr:hover{background:#eef6ff;}
@@ -58,6 +56,7 @@ footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 <footer>© 울산도시공사 도서관리 시스템 | CSV 기반 GitHub Pages 뷰어</footer>
 
 <script>
+// CSV 로드
 async function loadCSV(file){
   const res = await fetch(file+'?v='+Date.now());
   if(!res.ok) throw new Error(file+' 로드 실패');
@@ -65,6 +64,7 @@ async function loadCSV(file){
   return text.trim().split('\n').map(r => r.split(','));
 }
 
+// 표 렌더링
 function renderTable(rows, id){
   const header = rows[0];
   const table = document.getElementById(id);
@@ -76,29 +76,36 @@ function renderTable(rows, id){
   }
 }
 
+// ✅ 디바운싱 + textContent 기반 검색
 function addSearch(inputId, tableId){
-  document.getElementById(inputId).addEventListener('input', e=>{
-    const val = e.target.value.trim();
-    document.querySelectorAll(`#${tableId} tr`).forEach((tr,i)=>{
-      if(i===0)return;
-      tr.style.display = tr.innerText.includes(val)?'':'none';
-    });
+  const input = document.getElementById(inputId);
+  let timer;
+  input.addEventListener('input', e=>{
+    clearTimeout(timer);
+    timer = setTimeout(()=>{
+      const val = e.target.value.trim();
+      const trs = document.querySelectorAll(`#${tableId} tr`);
+      for(let i=1;i<trs.length;i++){
+        const tr = trs[i];
+        const text = tr.textContent; // innerText 대신 textContent
+        tr.style.display = text.includes(val)?'':'none';
+      }
+    }, 150); // 입력 후 0.15초 지연
   });
 }
 
-// 🧩 메인 실행
+// 실행
 Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
-  // books: 대출현황 CSV
   renderTable(books, 'loanTable');
 
-  // 도서코드를 키로 매핑
+  // 대출현황 매핑
   const loanMap = {};
   for(let i=1;i<books.length;i++){
     const [등록일, 코드, 도서명, 저자명, 대여자명, 상태] = books[i];
     loanMap[코드] = {상태, 대여자명};
   }
 
-  // library.csv에 대출정보 덧씌우기
+  // 전체목록에 대출정보 반영
   const libHeader = library[0];
   const 코드idx = libHeader.indexOf('코드번호');
   const 대출여부idx = libHeader.indexOf('대출여부');
