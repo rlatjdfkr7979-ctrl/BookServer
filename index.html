@@ -55,11 +55,11 @@ footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 
 <footer>© 울산도시공사 도서관리 시스템 | CSV 기반 GitHub Pages 뷰어</footer>
 
-<!-- ✅ 안정적 CSV 파서 추가 -->
+<!-- ✅ 안정적 CSV 파서 -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
 <script>
-// CSV 로드 (PapaParse 사용)
+// CSV 로드
 async function loadCSV(file){
   const res = await fetch(file+'?v='+Date.now());
   if(!res.ok) throw new Error(file+' 로드 실패');
@@ -80,7 +80,7 @@ function renderTable(rows, id){
   }
 }
 
-// ✅ 빠르고 안전한 검색 (디바운싱 + textContent)
+// 빠른 검색 (디바운싱 + textContent)
 function addSearch(inputId, tableId){
   const input = document.getElementById(inputId);
   let timer;
@@ -100,30 +100,45 @@ function addSearch(inputId, tableId){
 
 // 메인 실행
 Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
+  // --- ① 대출현황 표 렌더링 ---
   renderTable(books, 'loanTable');
 
-  // 대출현황 매핑
+  // --- ② 대출현황 데이터 매핑 ---
   const loanMap = {};
+  const bookHeader = books[0];
+  const bookCodeIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
+  const bookStatusIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('상태'));
+  const bookUserIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('대여자'));
+
   for(let i=1;i<books.length;i++){
-    const [등록일, 코드, 도서명, 저자명, 대여자명, 상태] = books[i];
-    loanMap[코드] = {상태, 대여자명};
+    const code = books[i][bookCodeIdx];
+    const borrower = books[i][bookUserIdx];
+    const status = books[i][bookStatusIdx];
+    if(code) loanMap[String(code).trim()] = { borrower, status };
   }
 
-  // 전체목록에 대출정보 반영
+  // --- ③ 전체 도서목록 연동 ---
   const libHeader = library[0];
-  const 코드idx = libHeader.indexOf('코드번호');
-  const 대출여부idx = libHeader.indexOf('대출여부');
-  const 대출자idx = libHeader.indexOf('대출자');
+  const codeIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
+  let loanStatusIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출여부'));
+  let loanUserIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출자'));
+
+  // 컬럼 없으면 자동 추가
+  if(loanStatusIdx === -1){ libHeader.push('대출여부'); loanStatusIdx = libHeader.length-1; }
+  if(loanUserIdx === -1){ libHeader.push('대출자'); loanUserIdx = libHeader.length-1; }
 
   for(let i=1;i<library.length;i++){
-    const code = library[i][코드idx];
+    const code = String(library[i][codeIdx] || '').trim();
     if(loanMap[code]){
-      library[i][대출여부idx] = loanMap[code].상태;
-      library[i][대출자idx] = loanMap[code].대여자명;
+      library[i][loanStatusIdx] = loanMap[code].status || '';
+      library[i][loanUserIdx] = loanMap[code].borrower || '';
     }
   }
 
+  // --- ④ 전체 도서목록 렌더링 ---
   renderTable(library, 'libraryTable');
+
+  // --- ⑤ 검색 기능 연결 ---
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
 });
