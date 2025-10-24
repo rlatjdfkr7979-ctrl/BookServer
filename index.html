@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 울산도시공사 도서관리 현황</title>
+<style>
+body {
+  font-family: 'Pretendard','Noto Sans KR',sans-serif;
+  background:#f8fafc;
+  margin:0; padding:20px;
+  color:#222;
+}
+h1 {
+  text-align:center;
+  color:#004080;
+  margin-bottom:15px;
+}
+input {
+  display:block;
+  margin:10px auto 20px;
+  padding:10px 15px;
+  font-size:15px;
+  border:1px solid #ccc;
+  border-radius:8px;
+  width:280px;
+}
+table {
+  width:100%;
+  border-collapse:collapse;
+  background:white;
+  box-shadow:0 0 5px rgba(0,0,0,0.05);
+}
+th, td {
+  border:1px solid #e0e0e0;
+  padding:8px 10px;
+  text-align:left;
+  font-size:14px;
+}
+th {
+  background:#f1f5f9;
+  color:#004080;
+}
+tr:nth-child(even){background:#fafafa;}
+tr:hover{background:#eef6ff;}
+footer {
+  text-align:center;
+  font-size:13px;
+  color:#666;
+  margin-top:25px;
+}
+</style>
+</head>
+<body>
+
+<h1>📚 도서관리 현황</h1>
+<input type="text" id="search" placeholder="도서명, 대여자, 코드번호로 검색...">
+<table id="bookTable"></table>
+
+<footer>© 울산도시공사 도서관리 시스템 | CSV 최신 반영 기준</footer>
+
+<script>
+// CSV 파일 로드
+async function loadCSV() {
+  const response = await fetch('books.csv'); // 같은 폴더에 저장된 CSV 파일
+  const text = await response.text();
+  const rows = text.trim().split('\n').map(r => r.split(','));
+  const header = rows.shift();
+
+  const table = document.getElementById('bookTable');
+  table.innerHTML = '<tr>' + header.map(h => `<th>${h}</th>`).join('') + '</tr>';
+
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = row.map(c => `<td>${c}</td>`).join('');
+    table.appendChild(tr);
+  }
+}
+
+// 검색 필터
+document.getElementById('search').addEventListener('input', e => {
+  const val = e.target.value.trim();
+  const trs = document.querySelectorAll('#bookTable tr');
+  trs.forEach((tr, i) => {
+    if (i === 0) return; // 헤더 제외
+    tr.style.display = tr.innerText.includes(val) ? '' : 'none';
+  });
+});
+
+// 실행
+loadCSV();
+</script>
+</body>
+</html>
