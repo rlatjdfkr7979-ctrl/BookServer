@@ -32,6 +32,7 @@
   <button id="btnLoans" class="active">📘 대출 현황</button>
   <button id="btnLibrary">📗 전체 도서목록</button>
   <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
+  <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
 </nav>
 
 <div id="loanSection">
@@ -265,6 +266,10 @@ document.getElementById('btnLibrary').onclick = ()=>{
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
 };
+document.getElementById('btnAddBook').onclick = ()=>{
+  window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
+};
+
 </script>
 </body>
 </html>
