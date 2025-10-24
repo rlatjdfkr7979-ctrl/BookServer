@@ -1,24 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 울산도시공사 도서관리 시스템</title>
+<style>
+  body{font-family:'Pretendard','Noto Sans KR',sans-serif;background:#f8fafc;margin:0;padding:24px;color:#222}
+  h1{text-align:center;color:#004080;margin-bottom:10px}
+  nav{text-align:center;margin-bottom:16px}
+  button{background:#004080;color:#fff;border:none;border-radius:8px;padding:8px 14px;margin:0 6px;cursor:pointer;font-size:14px}
+  button.active{background:#2563eb}
+  button.filter{background:#6b7280}
+  button.filter.active{background:#16a34a}
+  button.qr-btn{background:#0d9488;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px}
+  input{display:block;margin:12px auto 16px;padding:8px 14px;font-size:14px;border:1px solid #cbd5e1;border-radius:6px;width:260px}
+  .table-wrap{max-height:70vh;overflow:auto;border-radius:8px;background:#fff;box-shadow:0 0 5px rgba(0,0,0,.08)}
+  table{width:100%;border-collapse:collapse;min-width:960px}
+  th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px}
+  th{background:#f1f5f9;color:#004080;position:sticky;top:0;z-index:10}
+  tr:nth-child(even){background:#fafafa}
+  tr:hover{background:#eef6ff}
+  tr.borrowed td{background:#fff8e1}
+  .hidden{display:none}
+  footer{text-align:center;color:#667085;font-size:13px;margin-top:18px}
+</style>
+</head>
+<body>
+
+<h1>📚 울산도시공사 도서관리 시스템</h1>
+<nav>
+  <button id="btnLoans" class="active">📘 대출 현황</button>
+  <button id="btnLibrary">📗 전체 도서목록</button>
+  <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
+</nav>
+
+<div id="loanSection">
+  <input type="text" id="searchLoans" placeholder="도서명, 대여자, 코드번호 검색...">
+  <div class="table-wrap"><table id="loanTable"></table></div>
+</div>
+
+<div id="librarySection" class="hidden">
+  <input type="text" id="searchLibrary" placeholder="제목/도서명, 저자, 출판사 검색...">
+  <div class="table-wrap"><table id="libraryTable"></table></div>
+</div>
+
+<footer>© 울산도시공사 도서관리 시스템 | CSV 뷰어 + 이력 반영 + QR 생성</footer>
+
+<!-- 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+
 <script>
-// ✅ 설정값 (Python 코드 동일)
-const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
+/* ====== 0) 환경 설정 (Python 코드와 동일한 폼 entry) ====== */
+const FORM_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
 const ENTRY_IDS = {
-  code: "entry.32105598",
-  title: "entry.1234176416",
-  author: "entry.628826984",
-  status: "entry.12641564",
-  renter: "entry.615776096"
+  code:   "entry.32105598",   // 도서코드
+  title:  "entry.1234176416", // 도서명
+  author: "entry.628826984",  // 저자명
+  status: "entry.12641564",   // 상태(대출/반납)
+  renter: "entry.615776096"   // 대여자명
 };
 
-// CSV 로드
-async function loadCSV(file){
-  const res = await fetch(file+'?v='+Date.now());
-  if(!res.ok) throw new Error(file+' 로드 실패');
-  const text = await res.text();
-  const parsed = Papa.parse(text.trim(), {skipEmptyLines:true});
-  return parsed.data;
+/* ====== 1) 유틸 ====== */
+const norm = s => String(s||'').replace(/\uFEFF/g,'').trim();           // BOM 제거 + 트림
+const normHead = s => norm(s).replace(/\s/g,'');                         // 헤더 비교용(공백 제거)
+const includesAny = (h, keys) => keys.some(k => normHead(h).includes(k));
+function findColIndex(header, candidates){                               
+  return header.findIndex(h => includesAny(h, candidates));
 }
 
-// 표 렌더링 (QR 버튼 포함)
+/* ====== 2) CSV 로드 ====== */
+async function loadCSV(file){
+  const res = await fetch(file + '?v=' + Date.now());
+  if(!res.ok) throw new Error(file + ' 로드 실패');
+  const text = await res.text();
+  return Papa.parse(text.trim(), { skipEmptyLines:true }).data;
+}
+
+/* ====== 3) 표 렌더링 ====== */
 function renderTable(rows, id, withQR=false){
   const header = rows[0];
   const table = document.getElementById(id);
@@ -29,90 +89,27 @@ function renderTable(rows, id, withQR=false){
     const tr = document.createElement('tr');
     tr.innerHTML = rows[i].map(c=>`<td>${c}</td>`).join('');
 
-    // QR 버튼 추가
     if(withQR){
-      const code = rows[i].find((_,idx)=>header[idx].replace(/\s/g,'').includes('코드'));
-      const title = rows[i].find((_,idx)=>{
-        const h = header[idx].replace(/\s/g,'');
-        return h.includes('제목') || h.includes('도서명');
-      }) || '';
-      const author = rows[i].find((_,idx)=>header[idx].replace(/\s/g,'').includes('지은이')) || '';
-      const status = rows[i].find((_,idx)=>{
-        const h = header[idx].replace(/\s/g,'');
-        return h.includes('상태') || h.includes('대출여부');
-      }) || '';
-      const renter = rows[i].find((_,idx)=>{
-        const h = header[idx].replace(/\s/g,'');
-        return h.includes('대출자') || h.includes('대여자');
-      }) || '';
+      // 컬럼 값 추출(헤더 변화 대응)
+      const code   = rows[i][findColIndex(header, ['코드','코드번호'])] || '';
+      const title  = rows[i][findColIndex(header, ['제목','도서명'])]   || '';
+      const author = rows[i][findColIndex(header, ['지은이','저자'])]   || '';
+      const status = rows[i][findColIndex(header, ['상태','대출여부'])] || '';
+      const renter = rows[i][findColIndex(header, ['대출자','대여자'])] || '';
 
-      const qrCell = document.createElement('td');
-      const qrBtn = document.createElement('button');
-      qrBtn.textContent = '📷 QR';
-      qrBtn.className = 'qr-btn';
-      qrBtn.onclick = ()=>generateQR({code, title, author, renter, status});
-      qrCell.appendChild(qrBtn);
-      tr.appendChild(qrCell);
+      const tdQR = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'qr-btn';
+      btn.textContent = '📷 QR';
+      btn.onclick = ()=>generateQR({code, title, author, renter, status});
+      tdQR.appendChild(btn);
+      tr.appendChild(tdQR);
     }
-
     table.appendChild(tr);
   }
 }
 
-// ✅ QR 생성 (Python 버전과 동일한 URL 구성)
-function generateQR(row){
-  const {code, title, author, renter, status} = row;
-  const statusEncoded = {
-    "대출": "%EB%8C%80%EC%B6%9C",
-    "반납": "%EB%B0%98%EB%82%A9"
-  }[status] || "";
-
-  const qrUrl =
-    `${FORM_URL}?usp=pp_url` +
-    `&${ENTRY_IDS.code}=${encodeURIComponent(code)}` +
-    `&${ENTRY_IDS.title}=${encodeURIComponent(title)}` +
-    `&${ENTRY_IDS.author}=${encodeURIComponent(author)}` +
-    `&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}` +
-    `&${ENTRY_IDS.status}=${statusEncoded}`;
-
-  // 팝업 생성
-  const popup = document.createElement('div');
-  popup.style = `
-    position:fixed;top:0;left:0;width:100%;height:100%;
-    background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;
-  `;
-  popup.innerHTML = `
-    <div style="background:white;padding:20px;border-radius:10px;text-align:center;">
-      <h3>📷 QR 코드 (${code})</h3>
-      <div id="qrcode"></div>
-      <p style="margin-top:10px;"><a href="${qrUrl}" target="_blank">${qrUrl}</a></p>
-      <button id="closePopup" style="margin-top:10px;background:#444;color:white;padding:5px 10px;border:none;border-radius:6px;">닫기</button>
-      <button id="downloadQR" style="margin-top:10px;background:#2563eb;color:white;padding:5px 10px;border:none;border-radius:6px;">QR 다운로드</button>
-    </div>`;
-  document.body.appendChild(popup);
-
-  // QR 생성
-  const qrDiv = popup.querySelector("#qrcode");
-  new QRCode(qrDiv, {
-    text: qrUrl,
-    width: 200,
-    height: 200,
-    colorDark: "#000",
-    colorLight: "#fff",
-    correctLevel: QRCode.CorrectLevel.H
-  });
-
-  popup.querySelector("#closePopup").onclick = ()=>popup.remove();
-  popup.querySelector("#downloadQR").onclick = ()=>{
-    const img = qrDiv.querySelector("img");
-    const a = document.createElement("a");
-    a.href = img.src;
-    a.download = `${code}.png`;
-    a.click();
-  };
-}
-
-// ✅ 검색
+/* ====== 4) 검색(디바운싱) ====== */
 function addSearch(inputId, tableId){
   const input = document.getElementById(inputId);
   let timer;
@@ -126,32 +123,148 @@ function addSearch(inputId, tableId){
         const text = tr.textContent;
         tr.style.display = text.includes(val)?'':'none';
       }
-    },150);
+    }, 150);
   });
 }
 
-// ✅ 실행 (대출현황 + 도서목록)
+/* ====== 5) QR 생성 ====== */
+function generateQR({code, title, author, renter, status}){
+  // Python과 동일한 매핑(정확 URL 인코딩)
+  const statusEncoded = (status.includes('반납'))
+    ? "%EB%B0%98%EB%82%A9"
+    : (status.includes('대출') || status.includes('대여'))
+      ? "%EB%8C%80%EC%B6%9C" : "";
+
+  const url =
+    `${FORM_URL}?usp=pp_url` +
+    `&${ENTRY_IDS.code}=${encodeURIComponent(code)}` +
+    `&${ENTRY_IDS.title}=${encodeURIComponent(title)}` +
+    `&${ENTRY_IDS.author}=${encodeURIComponent(author)}` +
+    `&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}` +
+    `&${ENTRY_IDS.status}=${statusEncoded}`;
+
+  const layer = document.createElement('div');
+  layer.style = `position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
+  layer.innerHTML = `
+    <div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px">
+      <h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3>
+      <div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div>
+      <p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p>
+      <div style="margin-top:10px">
+        <button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button>
+        <button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button>
+      </div>
+    </div>`;
+  document.body.appendChild(layer);
+
+  new QRCode(layer.querySelector('#qrbox'), {
+    text: url, width: 220, height: 220,
+    colorDark:"#000", colorLight:"#fff", correctLevel: QRCode.CorrectLevel.H
+  });
+
+  layer.querySelector('#qrClose').onclick = ()=>layer.remove();
+  layer.querySelector('#qrDown').onclick = ()=>{
+    const img = layer.querySelector('#qrbox img');
+    const a = document.createElement('a');
+    a.href = img.src; a.download = `${code}.png`; a.click();
+  };
+}
+
+/* ====== 6) 메인 실행: 이력 반영 + QR ====== */
 Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
+  /* --- 대출현황 테이블 먼저 그리기 --- */
   renderTable(books, 'loanTable');
+
+  /* --- books.csv(이력) → 코드별 최신 상태/최근반납일 구하기 --- */
+  const bh = books[0].map(norm);
+  const bDateIdx   = findColIndex(bh, ['등록일','대출일','일자']);
+  const bCodeIdx   = findColIndex(bh, ['코드','코드번호']);
+  const bStatusIdx = findColIndex(bh, ['상태','대출여부']);
+  const bUserIdx   = findColIndex(bh, ['대여자','대출자']);
+
+  const latestByCode = {}; // {code:{status, borrower, lastReturn}}
+  for(let i=1;i<books.length;i++){
+    const date = norm(books[i][bDateIdx]);
+    const code = norm(books[i][bCodeIdx]);
+    const status = norm(books[i][bStatusIdx]);
+    const borrower = norm(books[i][bUserIdx]);
+    if(!code) continue;
+
+    if(!latestByCode[code]) latestByCode[code] = {status:'', borrower:'', lastReturn:''};
+    if(status.includes('반납')) latestByCode[code].lastReturn = date;
+    // 이력이 아래로 누적된다고 가정 → "마지막으로 본 값"이 최신
+    latestByCode[code].status   = status;
+    latestByCode[code].borrower = borrower;
+  }
+
+  /* --- library.csv에 최신 상태 반영 (+최근반납일 열 자동 추가) --- */
+  const lh = library[0].map(norm);
+  const lCodeIdx   = findColIndex(lh, ['코드','코드번호']);
+  let   lStatusIdx = findColIndex(lh, ['상태','대출여부']);
+  let   lUserIdx   = findColIndex(lh, ['대여자','대출자']);
+  let   lRetIdx    = findColIndex(lh, ['최근반납일','반납일']);
+
+  if(lStatusIdx === -1){ library[0].push('대출여부'); lStatusIdx = library[0].length-1; }
+  if(lUserIdx   === -1){ library[0].push('대출자');   lUserIdx   = library[0].length-1; }
+  if(lRetIdx    === -1){ library[0].push('최근반납일');lRetIdx    = library[0].length-1; }
+
+  for(let i=1;i<library.length;i++){
+    const code = norm(library[i][lCodeIdx]);
+    const rec  = latestByCode[code];
+    if(!rec){
+      library[i][lStatusIdx] = '';
+      library[i][lUserIdx]   = '';
+      library[i][lRetIdx]    = '';
+      continue;
+    }
+    if(rec.status.includes('반납')){
+      library[i][lStatusIdx] = '반납';
+      library[i][lUserIdx]   = '';
+      library[i][lRetIdx]    = rec.lastReturn || '';
+    }else{
+      library[i][lStatusIdx] = rec.status || '대출';
+      library[i][lUserIdx]   = rec.borrower || '';
+      library[i][lRetIdx]    = rec.lastReturn || '';
+    }
+  }
+
+  /* --- 반영된 library로 렌더링(여기에 QR 버튼 포함) --- */
   renderTable(library, 'libraryTable', true);
+
+  /* --- 검색 연결 --- */
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
 
-  // ✅ 대출 중 도서만 보기 (수정된 버전)
-  const btnFilter = document.getElementById('btnBorrowed');
-  let filterActive = false;
-  btnFilter.onclick = ()=>{
-    filterActive = !filterActive;
-    btnFilter.classList.toggle('active', filterActive);
-    const trs = document.querySelectorAll('#libraryTable tr');
+  /* --- "대출 중만 보기" 필터 --- */
+  const btn = document.getElementById('btnBorrowed');
+  let on = false;
+  btn.onclick = ()=>{
+    on = !on; btn.classList.toggle('active', on);
     const header = library[0];
-    const statusIdx = header.findIndex(h => h.replace(/\s/g,'').includes('대출여부') || h.includes('상태'));
+    const statusIdx = findColIndex(header, ['상태','대출여부']);
+    const trs = document.querySelectorAll('#libraryTable tr');
     for(let i=1;i<trs.length;i++){
       const td = trs[i].querySelectorAll('td')[statusIdx];
       const isBorrowed = td && /(대출|대여)/.test(td.textContent);
-      trs[i].style.display = (filterActive && !isBorrowed)?'none':'';
+      trs[i].style.display = (on && !isBorrowed) ? 'none' : '';
       trs[i].classList.toggle('borrowed', isBorrowed);
     }
   };
 });
+
+/* ====== 7) 탭 전환 ====== */
+document.getElementById('btnLoans').onclick = ()=>{
+  document.getElementById('loanSection').classList.remove('hidden');
+  document.getElementById('librarySection').classList.add('hidden');
+  document.getElementById('btnLoans').classList.add('active');
+  document.getElementById('btnLibrary').classList.remove('active');
+};
+document.getElementById('btnLibrary').onclick = ()=>{
+  document.getElementById('librarySection').classList.remove('hidden');
+  document.getElementById('loanSection').classList.add('hidden');
+  document.getElementById('btnLibrary').classList.add('active');
+  document.getElementById('btnLoans').classList.remove('active');
+};
 </script>
+</body>
+</html>
