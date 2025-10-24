@@ -5,19 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📚 울산도시공사 도서관리 시스템</title>
 <style>
-body{font-family:'Pretendard','Noto Sans KR',sans-serif;background:#f8fafc;margin:0;padding:25px;}
-h1{text-align:center;color:#004080;margin-bottom:10px;}
-nav{text-align:center;margin-bottom:25px;}
-button{background:#004080;color:white;border:none;border-radius:8px;padding:10px 18px;margin:0 5px;cursor:pointer;font-size:15px;}
-button.active{background:#2563eb;}
-input{display:block;margin:15px auto 20px;padding:8px 15px;font-size:14px;border:1px solid #ccc;border-radius:6px;width:260px;}
-table{width:100%;border-collapse:collapse;background:white;box-shadow:0 0 5px rgba(0,0,0,0.05);}
-th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px;}
-th{background:#f1f5f9;color:#004080;}
+body {
+  font-family: 'Pretendard','Noto Sans KR',sans-serif;
+  background:#f8fafc; margin:0; padding:25px; color:#222;
+}
+h1 { text-align:center; color:#004080; margin-bottom:10px; }
+nav { text-align:center; margin-bottom:20px; }
+button {
+  background:#004080; color:white; border:none; border-radius:8px;
+  padding:9px 18px; margin:0 5px; cursor:pointer; font-size:15px;
+}
+button.active { background:#2563eb; }
+input {
+  display:block; margin:15px auto 20px; padding:8px 15px; font-size:14px;
+  border:1px solid #ccc; border-radius:6px; width:260px;
+}
+.table-wrap {
+  max-height:70vh; overflow:auto; border-radius:8px; background:white;
+  box-shadow:0 0 5px rgba(0,0,0,0.08);
+}
+table { width:100%; border-collapse:collapse; min-width:800px; }
+th, td {
+  border:1px solid #e2e8f0; padding:7px 10px; text-align:left; font-size:13.5px;
+}
+th {
+  background:#f1f5f9; color:#004080; position:sticky; top:0; z-index:10;
+}
 tr:nth-child(even){background:#fafafa;}
 tr:hover{background:#eef6ff;}
-footer{text-align:center;color:#666;font-size:13px;margin-top:30px;}
 .hidden{display:none;}
+footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 </style>
 </head>
 <body>
@@ -30,44 +47,75 @@ footer{text-align:center;color:#666;font-size:13px;margin-top:30px;}
 
 <div id="loanSection">
   <input type="text" id="searchLoans" placeholder="도서명, 대여자, 코드번호 검색...">
-  <table id="loanTable"></table>
+  <div class="table-wrap"><table id="loanTable"></table></div>
 </div>
 
 <div id="librarySection" class="hidden">
   <input type="text" id="searchLibrary" placeholder="제목, 저자, 출판사 검색...">
-  <table id="libraryTable"></table>
+  <div class="table-wrap"><table id="libraryTable"></table></div>
 </div>
 
 <footer>© 울산도시공사 도서관리 시스템 | CSV 기반 GitHub Pages 뷰어</footer>
 
 <script>
-// CSV 로드 함수
-async function loadCSV(file, tableId){
-  const res = await fetch(file+'?v='+Date.now()); // 캐시 방지
-  if(!res.ok) throw new Error(file + ' 로드 실패');
+async function loadCSV(file){
+  const res = await fetch(file+'?v='+Date.now());
+  if(!res.ok) throw new Error(file+' 로드 실패');
   const text = await res.text();
-  const rows = text.trim().split('\n').map(r => r.split(','));
-  const header = rows.shift();
-  const table = document.getElementById(tableId);
+  return text.trim().split('\n').map(r => r.split(','));
+}
+
+function renderTable(rows, id){
+  const header = rows[0];
+  const table = document.getElementById(id);
   table.innerHTML = '<tr>'+header.map(h=>`<th>${h}</th>`).join('')+'</tr>';
-  for(const row of rows){
+  for(let i=1;i<rows.length;i++){
     const tr = document.createElement('tr');
-    tr.innerHTML = row.map(c=>`<td>${c}</td>`).join('');
+    tr.innerHTML = rows[i].map(c=>`<td>${c}</td>`).join('');
     table.appendChild(tr);
   }
 }
 
-// 검색 필터 함수
 function addSearch(inputId, tableId){
   document.getElementById(inputId).addEventListener('input', e=>{
     const val = e.target.value.trim();
-    const trs = document.querySelectorAll(`#${tableId} tr`);
-    trs.forEach((tr,i)=>{
+    document.querySelectorAll(`#${tableId} tr`).forEach((tr,i)=>{
       if(i===0)return;
       tr.style.display = tr.innerText.includes(val)?'':'none';
     });
   });
 }
+
+// 🧩 메인 실행
+Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
+  // books: 대출현황 CSV
+  renderTable(books, 'loanTable');
+
+  // 도서코드를 키로 매핑
+  const loanMap = {};
+  for(let i=1;i<books.length;i++){
+    const [등록일, 코드, 도서명, 저자명, 대여자명, 상태] = books[i];
+    loanMap[코드] = {상태, 대여자명};
+  }
+
+  // library.csv에 대출정보 덧씌우기
+  const libHeader = library[0];
+  const 코드idx = libHeader.indexOf('코드번호');
+  const 대출여부idx = libHeader.indexOf('대출여부');
+  const 대출자idx = libHeader.indexOf('대출자');
+
+  for(let i=1;i<library.length;i++){
+    const code = library[i][코드idx];
+    if(loanMap[code]){
+      library[i][대출여부idx] = loanMap[code].상태;
+      library[i][대출자idx] = loanMap[code].대여자명;
+    }
+  }
+
+  renderTable(library, 'libraryTable');
+  addSearch('searchLoans','loanTable');
+  addSearch('searchLibrary','libraryTable');
+});
 
 // 탭 전환
 document.getElementById('btnLoans').onclick = ()=>{
@@ -82,12 +130,6 @@ document.getElementById('btnLibrary').onclick = ()=>{
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
 };
-
-// 실행
-loadCSV('books.csv','loanTable');
-loadCSV('library.csv','libraryTable');
-addSearch('searchLoans','loanTable');
-addSearch('searchLibrary','libraryTable');
 </script>
 </body>
 </html>
