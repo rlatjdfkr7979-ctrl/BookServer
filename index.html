@@ -16,6 +16,12 @@ button{
   padding:9px 18px;margin:0 5px;cursor:pointer;font-size:15px;
 }
 button.active{background:#2563eb;}
+button.filter{
+  background:#6b7280;
+}
+button.filter.active{
+  background:#16a34a;
+}
 input{
   display:block;margin:15px auto 20px;padding:8px 15px;font-size:14px;
   border:1px solid #ccc;border-radius:6px;width:260px;
@@ -31,6 +37,7 @@ th{
 }
 tr:nth-child(even){background:#fafafa;}
 tr:hover{background:#eef6ff;}
+tr.borrowed td{background:#fff8e1;}
 .hidden{display:none;}
 footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 </style>
@@ -41,6 +48,7 @@ footer{text-align:center;color:#666;font-size:13px;margin-top:25px;}
 <nav>
   <button id="btnLoans" class="active">📘 대출 현황</button>
   <button id="btnLibrary">📗 전체 도서목록</button>
+  <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
 </nav>
 
 <div id="loanSection">
@@ -80,7 +88,7 @@ function renderTable(rows, id){
   }
 }
 
-// 빠른 검색 (디바운싱 + textContent)
+// 검색 (디바운싱)
 function addSearch(inputId, tableId){
   const input = document.getElementById(inputId);
   let timer;
@@ -94,7 +102,7 @@ function addSearch(inputId, tableId){
         const text = tr.textContent;
         tr.style.display = text.includes(val)?'':'none';
       }
-    }, 150);
+    },150);
   });
 }
 
@@ -103,44 +111,73 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   // --- ① 대출현황 표 렌더링 ---
   renderTable(books, 'loanTable');
 
-  // --- ② 대출현황 데이터 매핑 ---
+  // --- ② 대출현황: 코드별 최신 상태 계산 ---
   const loanMap = {};
   const bookHeader = books[0];
-  const bookCodeIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
-  const bookStatusIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('상태'));
-  const bookUserIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('대여자'));
+  const codeIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
+  const statusIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('상태'));
+  const userIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('대여자'));
 
   for(let i=1;i<books.length;i++){
-    const code = books[i][bookCodeIdx];
-    const borrower = books[i][bookUserIdx];
-    const status = books[i][bookStatusIdx];
-    if(code) loanMap[String(code).trim()] = { borrower, status };
+    const code = String(books[i][codeIdx] || '').trim();
+    const status = (books[i][statusIdx] || '').trim();
+    const borrower = (books[i][userIdx] || '').trim();
+    if(!code) continue;
+    // 동일 코드가 여러 번 있으면 가장 마지막 행(가장 최근)을 반영
+    loanMap[code] = { status, borrower };
   }
 
   // --- ③ 전체 도서목록 연동 ---
   const libHeader = library[0];
-  const codeIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
-  let loanStatusIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출여부'));
-  let loanUserIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출자'));
+  const libCodeIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
+  let libStatusIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출여부'));
+  let libUserIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출자'));
 
-  // 컬럼 없으면 자동 추가
-  if(loanStatusIdx === -1){ libHeader.push('대출여부'); loanStatusIdx = libHeader.length-1; }
-  if(loanUserIdx === -1){ libHeader.push('대출자'); loanUserIdx = libHeader.length-1; }
+  // 컬럼 없으면 추가
+  if(libStatusIdx === -1){ libHeader.push('대출여부'); libStatusIdx = libHeader.length-1; }
+  if(libUserIdx === -1){ libHeader.push('대출자'); libUserIdx = libHeader.length-1; }
 
   for(let i=1;i<library.length;i++){
-    const code = String(library[i][codeIdx] || '').trim();
-    if(loanMap[code]){
-      library[i][loanStatusIdx] = loanMap[code].status || '';
-      library[i][loanUserIdx] = loanMap[code].borrower || '';
+    const code = String(library[i][libCodeIdx] || '').trim();
+    const loan = loanMap[code];
+    if(!loan){ 
+      library[i][libStatusIdx] = ''; 
+      library[i][libUserIdx] = '';
+      continue;
+    }
+    // 상태가 '반납'이면 대출자 비움
+    if(loan.status.includes('반납')){
+      library[i][libStatusIdx] = '반납';
+      library[i][libUserIdx] = '';
+    } else {
+      library[i][libStatusIdx] = loan.status || '대출';
+      library[i][libUserIdx] = loan.borrower || '';
     }
   }
 
-  // --- ④ 전체 도서목록 렌더링 ---
+  // --- ④ 렌더링 ---
   renderTable(library, 'libraryTable');
 
   // --- ⑤ 검색 기능 연결 ---
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
+
+  // --- ⑥ 대출 중 도서만 보기 ---
+  const btnFilter = document.getElementById('btnBorrowed');
+  let filterActive = false;
+  btnFilter.onclick = ()=>{
+    filterActive = !filterActive;
+    btnFilter.classList.toggle('active', filterActive);
+    const trs = document.querySelectorAll('#libraryTable tr');
+    const header = library[0];
+    const statusIdx = header.findIndex(h => h.replace(/\s/g,'').includes('대출여부'));
+    for(let i=1;i<trs.length;i++){
+      const td = trs[i].querySelectorAll('td')[statusIdx];
+      const isBorrowed = td && td.textContent.includes('대출');
+      trs[i].style.display = (filterActive && !isBorrowed)?'none':'';
+      trs[i].classList.toggle('borrowed', isBorrowed);
+    }
+  };
 });
 
 // 탭 전환
