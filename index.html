@@ -30,7 +30,7 @@ input{
   max-height:70vh;overflow:auto;border-radius:8px;background:white;
   box-shadow:0 0 5px rgba(0,0,0,0.08);
 }
-table{width:100%;border-collapse:collapse;min-width:800px;}
+table{width:100%;border-collapse:collapse;min-width:900px;}
 th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px;}
 th{
   background:#f1f5f9;color:#004080;position:sticky;top:0;z-index:10;
@@ -111,47 +111,57 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   // --- ① 대출현황 표 렌더링 ---
   renderTable(books, 'loanTable');
 
-  // --- ② 대출현황: 코드별 최신 상태 계산 ---
+  // --- ② 대출현황 매핑 (이력 기반 최신 상태 + 최근 반납일 기록) ---
   const loanMap = {};
   const bookHeader = books[0];
+  const dateIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('등록일'));
   const codeIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
   const statusIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('상태'));
   const userIdx = bookHeader.findIndex(h => h.replace(/\s/g,'').includes('대여자'));
 
   for(let i=1;i<books.length;i++){
+    const date = books[i][dateIdx];
     const code = String(books[i][codeIdx] || '').trim();
     const status = (books[i][statusIdx] || '').trim();
     const borrower = (books[i][userIdx] || '').trim();
     if(!code) continue;
-    // 동일 코드가 여러 번 있으면 가장 마지막 행(가장 최근)을 반영
-    loanMap[code] = { status, borrower };
+
+    // 로그 누적: 마지막 상태 + 최근 반납일 기록
+    if(!loanMap[code]) loanMap[code] = {status:'', borrower:'', lastReturn:''};
+    if(status.includes('반납')) loanMap[code].lastReturn = date;
+    loanMap[code].status = status;
+    loanMap[code].borrower = borrower;
   }
 
-  // --- ③ 전체 도서목록 연동 ---
+  // --- ③ 전체 도서목록 반영 ---
   const libHeader = library[0];
   const libCodeIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('코드'));
   let libStatusIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출여부'));
   let libUserIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('대출자'));
+  let libReturnIdx = libHeader.findIndex(h => h.replace(/\s/g,'').includes('최근반납일'));
 
   // 컬럼 없으면 추가
   if(libStatusIdx === -1){ libHeader.push('대출여부'); libStatusIdx = libHeader.length-1; }
   if(libUserIdx === -1){ libHeader.push('대출자'); libUserIdx = libHeader.length-1; }
+  if(libReturnIdx === -1){ libHeader.push('최근반납일'); libReturnIdx = libHeader.length-1; }
 
   for(let i=1;i<library.length;i++){
     const code = String(library[i][libCodeIdx] || '').trim();
     const loan = loanMap[code];
-    if(!loan){ 
-      library[i][libStatusIdx] = ''; 
+    if(!loan){
+      library[i][libStatusIdx] = '';
       library[i][libUserIdx] = '';
+      library[i][libReturnIdx] = '';
       continue;
     }
-    // 상태가 '반납'이면 대출자 비움
     if(loan.status.includes('반납')){
       library[i][libStatusIdx] = '반납';
       library[i][libUserIdx] = '';
+      library[i][libReturnIdx] = loan.lastReturn || '';
     } else {
       library[i][libStatusIdx] = loan.status || '대출';
       library[i][libUserIdx] = loan.borrower || '';
+      library[i][libReturnIdx] = loan.lastReturn || '';
     }
   }
 
@@ -162,7 +172,7 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
 
-  // --- ⑥ 대출 중 도서만 보기 ---
+  // --- ⑥ 대출 중 도서만 보기 필터 ---
   const btnFilter = document.getElementById('btnBorrowed');
   let filterActive = false;
   btnFilter.onclick = ()=>{
