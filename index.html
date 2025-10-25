@@ -1647,9 +1647,11 @@ async function testDoorayConnection() {
       testResultDiv.innerHTML = `
         ✅ ${result.message}
         
-프로젝트 ID: ${result.data.projectId}
-포스트 제목: ${result.data.postTitle}
-마지막 수정: ${result.data.lastModified}
+Wiki ID: ${result.data.wikiId || 'N/A'}
+페이지 제목: ${result.data.pageTitle || 'N/A'}
+페이지 ID: ${result.data.pageId || 'N/A'}
+콘텐츠 길이: ${result.data.contentLength || 0}자
+마지막 수정: ${result.data.lastModified || 'N/A'}
       `;
     } else {
       testResultDiv.className = 'test-result status-error';
@@ -1827,8 +1829,8 @@ async function saveDoorayConfig() {
         ✅ 설정 저장 및 연결 테스트 성공!
         
 ${result.message}
-프로젝트 ID: ${result.data.projectId}
-포스트 제목: ${result.data.postTitle}
+Wiki ID: ${result.data.wikiId || 'N/A'}
+페이지 제목: ${result.data.pageTitle || 'N/A'}
       `;
       
       // UI 상태 업데이트
