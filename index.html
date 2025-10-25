@@ -365,6 +365,8 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       document.getElementById('loanSection').classList.add('hidden');
       document.getElementById('btnLibrary').classList.add('active');
       document.getElementById('btnLoans').classList.remove('active');
+      // 스크롤을 맨 위로 이동
+      window.scrollTo(0,0);
     }
     
     borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
@@ -390,6 +392,8 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       document.getElementById('loanSection').classList.add('hidden');
       document.getElementById('btnLibrary').classList.add('active');
       document.getElementById('btnLoans').classList.remove('active');
+      // 스크롤을 맨 위로 이동
+      window.scrollTo(0,0);
     }
     
     newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
@@ -467,6 +471,8 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
         document.getElementById('loanSection').classList.add('hidden');
         document.getElementById('btnLibrary').classList.add('active');
         document.getElementById('btnLoans').classList.remove('active');
+        // 스크롤을 맨 위로 이동
+        window.scrollTo(0,0);
       }
       
       recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
@@ -512,12 +518,16 @@ document.getElementById('btnLoans').onclick=()=>{
   document.getElementById('librarySection').classList.add('hidden');
   document.getElementById('btnLoans').classList.add('active');
   document.getElementById('btnLibrary').classList.remove('active');
+  // 스크롤을 맨 위로 이동
+  window.scrollTo(0,0);
 };
 document.getElementById('btnLibrary').onclick=()=>{
   document.getElementById('librarySection').classList.remove('hidden');
   document.getElementById('loanSection').classList.add('hidden');
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
+  // 스크롤을 맨 위로 이동
+  window.scrollTo(0,0);
 };
 document.getElementById('btnAddBook').onclick=()=>{
   window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
