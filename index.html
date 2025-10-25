@@ -20,8 +20,8 @@
   th{background:#f1f5f9;color:#004080;position:sticky;top:0;z-index:10}
   tr:nth-child(even){background:#fafafa}
   tr:hover{background:#eef6ff}
-  tr.borrowed td{background:#fff8e1}
-  tr.overdue td{background:#ffe4e1 !important;} /* ✅ 연체 표시 */
+  tr.borrowed td{background:#fff8e1} /* 대출 중 - 노란색 */
+  tr.overdue td{background:#fee2e2 !important;} /* 연체 - 빨간색 */
   .hidden{display:none}
   footer{text-align:center;color:#667085;font-size:13px;margin-top:18px}
   #historyModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;}
@@ -307,10 +307,17 @@ function renderTableWithPagination(rows,id,withQR=false){
       
       // 상태에 따른 행 색상 적용
       const rowStatus = rows[i][statusIdx] || '';
-      if(rowStatus.includes('연체')){
-        tr.classList.add('overdue');
-      } else if(rowStatus.includes('대출') || rowStatus.includes('대여')){
-        tr.classList.add('borrowed');
+      const statusInfo = rows[i]._statusInfo;
+      
+      if(statusInfo && statusInfo.className) {
+        tr.classList.add(statusInfo.className);
+      } else {
+        // 기존 방식으로 fallback
+        if(rowStatus.includes('연체')){
+          tr.classList.add('overdue');
+        } else if(rowStatus.includes('대출') || rowStatus.includes('대여')){
+          tr.classList.add('borrowed');
+        }
       }
       
       const tdTitle=tr.children[titleIdx];
@@ -394,16 +401,32 @@ function sortTable(originalRows,tableId,colIdx,withQR=false){
   if(withQR){
     const statusIdx=findColIndex(header,['상태','대출여부']);
     const allRows = table.querySelectorAll('tr');
+    const currentData = allTableData[tableId];
+    
     for(let rowIdx = 1; rowIdx < allRows.length; rowIdx++){
       const tr = allRows[rowIdx];
-      const statusCell = tr.cells[statusIdx];
-      if(statusCell){
-        const statusText = statusCell.textContent || '';
-        tr.classList.remove('borrowed', 'overdue');
-        if(statusText.includes('연체')){
-          tr.classList.add('overdue');
-        } else if(statusText.includes('대출') || statusText.includes('대여')){
-          tr.classList.add('borrowed');
+      tr.classList.remove('borrowed', 'overdue');
+      
+      // 현재 페이지의 데이터 인덱스 계산
+      const page = currentPage[tableId];
+      const startIdx = (page - 1) * ITEMS_PER_PAGE + 1;
+      const dataIndex = startIdx + rowIdx - 1;
+      
+      if(dataIndex < currentData.length && currentData[dataIndex]._statusInfo) {
+        const statusInfo = currentData[dataIndex]._statusInfo;
+        if(statusInfo.className) {
+          tr.classList.add(statusInfo.className);
+        }
+      } else {
+        // 기존 방식으로 fallback
+        const statusCell = tr.cells[statusIdx];
+        if(statusCell){
+          const statusText = statusCell.textContent || '';
+          if(statusText.includes('연체')){
+            tr.classList.add('overdue');
+          } else if(statusText.includes('대출') || statusText.includes('대여')){
+            tr.classList.add('borrowed');
+          }
         }
       }
     }
@@ -450,6 +473,50 @@ function isOverdue(dateStr,status){
   if(isNaN(d))return false;
   const diff=(Date.now()-d.getTime())/(1000*60*60*24);
   return diff>14;
+}
+
+/* ====== 대출 상태 및 남은 일수 계산 ====== */
+function calculateLoanStatus(dateStr, status) {
+  if (!dateStr || status.includes('반납')) {
+    return { status: '반납', displayText: '반납', className: '' };
+  }
+  
+  const loanDate = new Date(dateStr);
+  if (isNaN(loanDate)) {
+    return { status: status, displayText: status, className: '' };
+  }
+  
+  const now = new Date();
+  const diffInDays = Math.floor((now.getTime() - loanDate.getTime()) / (1000 * 60 * 60 * 24));
+  const loanPeriod = 14; // 대출 기간 14일
+  const remainingDays = loanPeriod - diffInDays;
+  
+  if (remainingDays > 0) {
+    // 대출 중 - 남은 일수 표시
+    return {
+      status: '대출',
+      displayText: `대출 (${remainingDays}일 남음)`,
+      className: 'borrowed',
+      remainingDays: remainingDays
+    };
+  } else if (remainingDays === 0) {
+    // 반납 당일
+    return {
+      status: '대출',
+      displayText: `대출 (오늘 반납)`,
+      className: 'borrowed',
+      remainingDays: 0
+    };
+  } else {
+    // 연체 - 초과 일수 표시
+    const overdueDays = Math.abs(remainingDays);
+    return {
+      status: '연체',
+      displayText: `연체 (${overdueDays}일 초과)`,
+      className: 'overdue',
+      overdueDays: overdueDays
+    };
+  }
 }
 
 /* ====== 도서 미리보기 (구글 Books API) ====== */
@@ -632,18 +699,26 @@ function renderBookHistory(code, title, container) {
           <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">대여자</th>
           <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">상태</th>
         </tr>
-        ${recs.map(r => `
-          <tr>
-            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[0]}</td>
-            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[4]}</td>
-            <td style="padding:10px 12px;border:1px solid #e2e8f0;">
-              <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;
-                ${r[5].includes('대출') || r[5].includes('연체') ? 'background:#fef3c7;color:#92400e;' : 'background:#d1fae5;color:#047857;'}">
-                ${r[5]}
-              </span>
-            </td>
-          </tr>
-        `).join('')}
+        ${recs.map(r => {
+          // 각 이력에 대해서도 상세 상태 계산
+          const loanStatus = calculateLoanStatus(r[0], r[5]);
+          const displayStatus = loanStatus.displayText || r[5];
+          const bgColor = loanStatus.status === '연체' ? 'background:#fee2e2;color:#dc2626;' :
+                         loanStatus.status === '대출' ? 'background:#fef3c7;color:#92400e;' :
+                         'background:#d1fae5;color:#047857;';
+          
+          return `
+            <tr>
+              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[0]}</td>
+              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[4]}</td>
+              <td style="padding:10px 12px;border:1px solid #e2e8f0;">
+                <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;${bgColor}">
+                  ${displayStatus}
+                </span>
+              </td>
+            </tr>
+          `;
+        }).join('')}
       </table>
     `;
   }
@@ -740,12 +815,15 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       library[i][lStatusIdx]='반납';
       library[i][lUserIdx]='';
     }else{
-      library[i][lStatusIdx]=rec.status||'대출';
       library[i][lUserIdx]=rec.borrower||'';
-      // ✅ 연체 계산 추가
-      const loanRow=books.find(b=>norm(b[bCodeIdx])===code);
+      // ✅ 상세한 대출 상태 계산 (남은 일수/초과 일수 포함)
+      const loanRow=books.find(b=>norm(b[bCodeIdx])===code && !b[bStatusIdx].includes('반납'));
       const loanDate=loanRow?loanRow[bDateIdx]:'';
-      if(isOverdue(loanDate,rec.status))library[i][lStatusIdx]='연체';
+      const loanStatus = calculateLoanStatus(loanDate, rec.status);
+      library[i][lStatusIdx] = loanStatus.displayText;
+      
+      // 상태 정보를 데이터에 저장 (나중에 색상 적용용)
+      library[i]._statusInfo = loanStatus;
     }
   }
 
@@ -855,7 +933,10 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       // 대출 중 필터 적용
       if(borrowedOn){
         const status = row[statusIdx] || '';
-        const isBorrowed = /(대출|대여|연체)/.test(status);
+        const statusInfo = row._statusInfo;
+        const isBorrowed = statusInfo ? 
+          (statusInfo.status === '대출' || statusInfo.status === '연체') :
+          /(대출|대여|연체)/.test(status);
         if(!isBorrowed) shouldShow = false;
       }
       
