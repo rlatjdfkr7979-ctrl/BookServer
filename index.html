@@ -76,24 +76,24 @@
 
 <h1>📚 울산도시공사 도서관리 시스템</h1>
 <nav>
-  <button id="btnLoans" class="active">📘 대출 현황</button>
-  <button id="btnLibrary">📗 전체 도서목록</button>
+  <button id="btnLibrary" class="active">📗 전체 도서목록</button>
   <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
   <button id="btnNewest" class="filter" style="background:#7c3aed;">📈 최신 도서 순으로 보기</button>
   <button id="btnRecent" style="background:#15803d;">🆕 최근 30일 도서만 보기</button>
+  <button id="btnLoans">📘 대출 현황</button>
   <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
 </nav>
 
-<div id="loanSection">
-  <input type="text" id="searchLoans" placeholder="도서명, 대여자, 코드번호 검색...">
-  <div class="table-wrap"><table id="loanTable"></table></div>
-  <div id="loanPagination" class="pagination"></div>
-</div>
-
-<div id="librarySection" class="hidden">
+<div id="librarySection">
   <input type="text" id="searchLibrary" placeholder="제목/도서명, 저자, 출판사 검색...">
   <div class="table-wrap"><table id="libraryTable"></table></div>
   <div id="libraryPagination" class="pagination"></div>
+</div>
+
+<div id="loanSection" class="hidden">
+  <input type="text" id="searchLoans" placeholder="도서명, 대여자, 코드번호 검색...">
+  <div class="table-wrap"><table id="loanTable"></table></div>
+  <div id="loanPagination" class="pagination"></div>
 </div>
 
 <!-- 도서 이력 팝업 -->
