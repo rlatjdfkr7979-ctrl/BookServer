@@ -87,7 +87,14 @@ async function loadCSV(file){
 
 /* ====== QR 생성 ====== */
 function generateQR({code,title,author,renter,status}){
-  const statusEncoded=(status.includes('반납'))?"%EB%B0%98%EB%82%A9":(status.includes('대출')||status.includes('대여'))?"%EB%8C%80%EC%B6%9C":"";
+  // 상태에 따른 라디오박스 선택 로직 개선
+  let statusEncoded = "";
+  if(status.includes('반납')){
+    statusEncoded = "%EB%B0%98%EB%82%A9"; // 반납
+  } else if(status.includes('대출') || status.includes('대여') || status.includes('연체')){
+    statusEncoded = "%EB%8C%80%EC%B6%9C"; // 대출 (연체 포함)
+  }
+  
   const url=`${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
   const layer=document.createElement('div');
   layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
