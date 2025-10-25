@@ -29,9 +29,12 @@
   #historyModal .content{padding:24px;overflow:auto;flex:1;}
   #historyModal .buttons{padding:16px 24px;border-top:1px solid #e2e8f0;background:#fff;border-radius:0 0 10px 10px;position:sticky;bottom:0;}
   #historyModal h3{margin:0 0 16px 0;font-size:18px;color:#004080;border-bottom:2px solid #e2e8f0;padding-bottom:8px;}
-  #historyModal table{font-size:14px !important;}
-  #historyModal th{background:#f8fafc;padding:10px 12px;font-weight:600;}
-  #historyModal td{padding:10px 12px;}
+  #historyModal table{font-size:14px !important;min-width:auto !important;table-layout:fixed;width:100%;}
+  #historyModal th{background:#f8fafc;padding:10px 12px;font-weight:600;word-wrap:break-word;}
+  #historyModal td{padding:10px 12px;word-wrap:break-word;overflow-wrap:break-word;}
+  #historyModal th:first-child, #historyModal td:first-child{width:30%;}
+  #historyModal th:nth-child(2), #historyModal td:nth-child(2){width:25%;}
+  #historyModal th:last-child, #historyModal td:last-child{width:45%;}
 </style>
 </head>
 <body>
