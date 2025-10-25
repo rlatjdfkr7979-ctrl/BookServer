@@ -333,9 +333,27 @@ class DoorayIntegration {
       Object.keys(additionalParams).forEach(key => {
         if (additionalParams[key] !== undefined && additionalParams[key] !== null) {
           const value = String(additionalParams[key]);
-          // 매우 긴 값은 잘라서 처리
-          const truncatedValue = value.length > 500 ? value.substring(0, 500) + '...[truncated]' : value;
-          params.append(key, truncatedValue);
+          
+          // content 파라미터는 Base64로 인코딩
+          if (key === 'content' && value.length > 100) {
+            try {
+              const base64Content = btoa(unescape(encodeURIComponent(value)));
+              params.append(key, base64Content);
+              params.append('encoding', 'base64');
+              console.log('📄 Content Base64 인코딩:', {
+                original: value.length,
+                encoded: base64Content.length
+              });
+            } catch (base64Error) {
+              console.warn('⚠️ Base64 인코딩 실패, 짧은 버전 사용:', base64Error.message);
+              const shortValue = value.substring(0, 300) + '...[truncated]';
+              params.append(key, shortValue);
+            }
+          } else {
+            // 다른 파라미터들은 기존 방식
+            const truncatedValue = value.length > 500 ? value.substring(0, 500) + '...[truncated]' : value;
+            params.append(key, truncatedValue);
+          }
         }
       });
       
@@ -418,13 +436,33 @@ class DoorayIntegration {
         contentLength: additionalParams.content ? additionalParams.content.length : 0
       });
 
+      // POST 요청 데이터 준비 (Base64 인코딩 포함)
       const requestData = {
         action: action,
         wikiId: this.config.wikiId || '',
         pageId: this.config.pageId || '',
         callback: 'jsonp_callback_' + Date.now(), // JSONP 콜백도 지원
-        ...additionalParams
       };
+
+      // content가 있으면 Base64로 인코딩
+      Object.keys(additionalParams).forEach(key => {
+        const value = additionalParams[key];
+        if (key === 'content' && value && value.length > 50) {
+          try {
+            requestData[key] = btoa(unescape(encodeURIComponent(value)));
+            requestData.encoding = 'base64';
+            console.log('📤 POST Content Base64 인코딩:', {
+              original: value.length,
+              encoded: requestData[key].length
+            });
+          } catch (base64Error) {
+            console.warn('⚠️ POST Base64 인코딩 실패:', base64Error.message);
+            requestData[key] = value;
+          }
+        } else {
+          requestData[key] = value;
+        }
+      });
 
       const response = await fetch(gasUrl, {
         method: 'POST',
@@ -1997,24 +2035,40 @@ async function syncLibraryToWiki() {
     wikiContent += `---\n`;
     wikiContent += `*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
 
-    // 간단한 요약 버전 (URL 길이 제한 해결)
-    const shortSummary = `# 📚 도서관리 현황 (${currentDate})
+    // ASCII 안전 버전 (한글 문제 회피)
+    const simpleSummary = `# Library Management Status (${new Date().toISOString().split('T')[0]})
 
-## 📊 요약
-- 전체 도서: ${libraryData.length - 1}권
-- 미반납 도서: ${unreturned.length}권
-- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+## Summary
+- Total Books: ${libraryData.length - 1}
+- Unreturned Books: ${unreturned.length}  
+- Return Rate: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
 
 ${unreturned.length === 0 ? 
-  '🎉 모든 도서가 반납되었습니다!' : 
-  `⚠️ ${unreturned.length}권의 도서가 미반납 상태입니다.`}
+  'All books have been returned!' : 
+  `${unreturned.length} books are currently unreturned.`}
 
 ---
-*업데이트: ${currentDate}*`;
+Updated: ${new Date().toISOString()}`;
 
-    // Google Apps Script를 통해 Wiki 업데이트
+    // 테스트용 간단한 ASCII 콘텐츠
+    const testContent = `# Test Update ${Date.now()}
+
+This is a simple test update to check if the system works.
+
+Books: ${libraryData.length - 1}
+Unreturned: ${unreturned.length}
+
+Status: ${unreturned.length === 0 ? 'OK' : 'PENDING'}`;
+
+    console.log('🔤 전송할 콘텐츠:', {
+      type: 'ASCII-safe test',
+      length: testContent.length,
+      preview: testContent.substring(0, 100)
+    });
+
+    // Google Apps Script를 통해 Wiki 업데이트 (ASCII 안전 버전 사용)
     const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
-      content: shortSummary
+      content: testContent
     });
     
     if (result && result.success) {
