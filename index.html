@@ -365,15 +365,16 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       document.getElementById('loanSection').classList.add('hidden');
       document.getElementById('btnLibrary').classList.add('active');
       document.getElementById('btnLoans').classList.remove('active');
-      // 페이지와 테이블 스크롤을 맨 위로 이동
-      window.scrollTo(0,0);
-      document.querySelector('#librarySection .table-wrap').scrollTop=0;
     }
     
     borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
     
     // 모든 필터 재적용
     applyAllFilters();
+    
+    // 페이지와 테이블 스크롤을 맨 위로 이동
+    window.scrollTo(0,0);
+    document.querySelector('#librarySection .table-wrap').scrollTop=0;
   };
 
   // ✅ 최신 도서 순 필터 (library.csv 데이터 역순 출력)
@@ -387,9 +388,6 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       document.getElementById('loanSection').classList.add('hidden');
       document.getElementById('btnLibrary').classList.add('active');
       document.getElementById('btnLoans').classList.remove('active');
-      // 페이지와 테이블 스크롤을 맨 위로 이동
-      window.scrollTo(0,0);
-      document.querySelector('#librarySection .table-wrap').scrollTop=0;
     }
     
     newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
@@ -433,6 +431,10 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     
     // 검색 기능 다시 바인딩
     addSearch('searchLibrary','libraryTable');
+    
+    // 페이지와 테이블 스크롤을 맨 위로 이동
+    window.scrollTo(0,0);
+    document.querySelector('#librarySection .table-wrap').scrollTop=0;
   };
   
   // 모든 필터를 재적용하는 함수
@@ -503,15 +505,16 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
         document.getElementById('loanSection').classList.add('hidden');
         document.getElementById('btnLibrary').classList.add('active');
         document.getElementById('btnLoans').classList.remove('active');
-        // 페이지와 테이블 스크롤을 맨 위로 이동
-        window.scrollTo(0,0);
-        document.querySelector('#librarySection .table-wrap').scrollTop=0;
       }
       
       recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
       
       // 모든 필터 재적용
       applyAllFilters();
+      
+      // 페이지와 테이블 스크롤을 맨 위로 이동
+      window.scrollTo(0,0);
+      document.querySelector('#librarySection .table-wrap').scrollTop=0;
     };
   }
 });
