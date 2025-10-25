@@ -1677,23 +1677,20 @@ async function syncLibraryToWiki() {
   }
   
   try {
-    // 현재 화면의 도서관 테이블에서 데이터 직접 추출
-    const libraryTable = document.getElementById('libraryTable');
-    if (!libraryTable) {
+    // 전체 원본 데이터 사용 (필터링되지 않은 전체 데이터)
+    if (!window.allTableData || !window.allTableData.libraryTable) {
       testResultDiv.className = 'test-result status-warning';
       testResultDiv.innerHTML = `
-        ❌ 도서관 테이블을 찾을 수 없습니다.
+        ❌ 도서관 데이터를 찾을 수 없습니다.
         
 📋 먼저 도서 데이터를 로드해주세요.
       `;
       return;
     }
 
-    // 테이블에서 직접 데이터 추출
-    const libraryData = [];
-    const rows = libraryTable.querySelectorAll('tr');
+    const libraryData = window.allTableData.libraryTable;
     
-    if (rows.length === 0) {
+    if (!libraryData || libraryData.length === 0) {
       testResultDiv.className = 'test-result status-warning';
       testResultDiv.innerHTML = `
         ❌ 도서 데이터가 없습니다.
@@ -1702,18 +1699,6 @@ async function syncLibraryToWiki() {
       `;
       return;
     }
-
-    // 테이블 행을 배열로 변환
-    rows.forEach((row, index) => {
-      const cells = row.querySelectorAll('td, th');
-      const rowData = [];
-      cells.forEach(cell => {
-        rowData.push(cell.textContent.trim());
-      });
-      if (rowData.length > 0) {
-        libraryData.push(rowData);
-      }
-    });
     const currentDate = new Date().toLocaleString('ko-KR');
     
     // 미반납 도서 필터링 (대출중, 연체 상태)
