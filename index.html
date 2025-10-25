@@ -334,20 +334,19 @@ class DoorayIntegration {
         if (additionalParams[key] !== undefined && additionalParams[key] !== null) {
           const value = String(additionalParams[key]);
           
-          // content 파라미터는 Base64로 인코딩
-          if (key === 'content' && value.length > 100) {
-            try {
-              const base64Content = btoa(unescape(encodeURIComponent(value)));
-              params.append(key, base64Content);
-              params.append('encoding', 'base64');
-              console.log('📄 Content Base64 인코딩:', {
+          // content는 길이에 따라 처리
+          if (key === 'content') {
+            if (value.length > 1000) {
+              // 너무 긴 콘텐츠는 요약 버전 사용
+              const summary = this.createSimpleSummary(value, libraryData, unreturned);
+              console.log('📄 긴 콘텐츠 감지, 요약 버전 사용:', {
                 original: value.length,
-                encoded: base64Content.length
+                summary: summary.length
               });
-            } catch (base64Error) {
-              console.warn('⚠️ Base64 인코딩 실패, 짧은 버전 사용:', base64Error.message);
-              const shortValue = value.substring(0, 300) + '...[truncated]';
-              params.append(key, shortValue);
+              params.append(key, summary);
+            } else {
+              // 적당한 길이는 그대로 전송
+              params.append(key, value);
             }
           } else {
             // 다른 파라미터들은 기존 방식
@@ -444,24 +443,9 @@ class DoorayIntegration {
         callback: 'jsonp_callback_' + Date.now(), // JSONP 콜백도 지원
       };
 
-      // content가 있으면 Base64로 인코딩
+      // 파라미터 추가 (Base64 없이 직접 전송)
       Object.keys(additionalParams).forEach(key => {
-        const value = additionalParams[key];
-        if (key === 'content' && value && value.length > 50) {
-          try {
-            requestData[key] = btoa(unescape(encodeURIComponent(value)));
-            requestData.encoding = 'base64';
-            console.log('📤 POST Content Base64 인코딩:', {
-              original: value.length,
-              encoded: requestData[key].length
-            });
-          } catch (base64Error) {
-            console.warn('⚠️ POST Base64 인코딩 실패:', base64Error.message);
-            requestData[key] = value;
-          }
-        } else {
-          requestData[key] = value;
-        }
+        requestData[key] = additionalParams[key];
       });
 
       const response = await fetch(gasUrl, {
@@ -563,6 +547,38 @@ ${unreturnedMatch && parseInt(unreturnedMatch[1]) === 0 ?
 
 ---
 *자동 생성된 요약 (원본 콘텐츠: ${content.length}자)*`;
+  }
+
+  // 📝 간단한 요약 생성 함수
+  createSimpleSummary(fullContent, libraryData, unreturned) {
+    const currentDate = new Date().toLocaleString('ko-KR');
+    
+    return `# 도서관리 현황
+
+**업데이트:** ${currentDate}
+
+## 통계
+- 전체 도서: ${libraryData.length - 1}권
+- 미반납 도서: ${unreturned.length}권
+- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+
+## 상태
+${unreturned.length === 0 ? 
+  '✅ 모든 도서가 반납되었습니다!' : 
+  `⚠️ ${unreturned.length}권의 도서가 미반납 상태입니다.`}
+
+${unreturned.length > 0 ? `
+
+### 미반납 도서 (처음 5권)
+${unreturned.slice(0, 5).map((book, index) => 
+  `${index + 1}. ${book.title || '제목없음'} - ${book.borrower || '정보없음'}`
+).join('\n')}
+
+${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
+` : ''}
+
+---
+*자동 생성 보고서*`;
   }
 
   // 📊 Wiki 업데이트 - 도서 현황을 실시간으로 Wiki에 반영
@@ -2082,24 +2098,22 @@ ${unreturned.length > 0 ? `
 *Auto-generated report from Library Management System*  
 *Last updated: ${new Date().toLocaleString('ko-KR')}*`;
 
-    // 실제 도서 데이터를 포함한 한글 버전
-    let koreanContent = `# 📚 도서관리 현황
+    // 간단하고 안전한 마크다운 버전
+    let koreanContent = `# 도서관리 현황
 
-**업데이트 시간:** ${new Date().toLocaleString('ko-KR')}
+업데이트: ${new Date().toLocaleString('ko-KR')}
 
-## 📊 현재 통계
+## 현재 통계
 
-| 항목 | 수량 |
-|------|------|
-| 전체 도서 | ${libraryData.length - 1}권 |
-| 미반납 도서 | ${unreturned.length}권 |
-| 반납률 | ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}% |
+- 전체 도서: ${libraryData.length - 1}권
+- 미반납 도서: ${unreturned.length}권  
+- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
 
-## 📈 상태 요약
+## 상태 요약
 
 ${unreturned.length === 0 ? 
-  '✅ **모든 도서가 반납되었습니다!** 🎉' : 
-  `⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다**`}`;
+  '모든 도서가 반납되었습니다! ✅' : 
+  `${unreturned.length}권의 도서가 미반납 상태입니다 ⚠️`}`;
 
     // 미반납 도서가 있으면 상세 목록 추가
     if (unreturned.length > 0) {
@@ -2135,8 +2149,29 @@ ${unreturned.length === 0 ?
 
     koreanContent += `\n---\n*도서관리 시스템에서 자동 생성된 보고서*  \n*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
 
-    // 이제 한글 버전으로 전환 (Base64 인코딩으로 안전하게 전송)
-    const finalContent = koreanContent;
+    // 간단하고 안전한 버전으로 교체
+    const finalContent = `# 도서관리 현황
+
+업데이트: ${new Date().toLocaleString('ko-KR')}
+
+## 통계
+- 전체 도서: ${libraryData.length - 1}권
+- 미반납 도서: ${unreturned.length}권
+- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+
+## 상태
+${unreturned.length === 0 ? '모든 도서가 반납되었습니다!' : `${unreturned.length}권의 도서가 미반납 상태입니다.`}
+
+${unreturned.length > 0 && unreturned.length <= 3 ? `
+### 미반납 도서
+${unreturned.map((book, i) => `${i+1}. ${(book.title||'제목없음').substring(0,30)} - ${book.borrower||'정보없음'}`).join('\n')}` : 
+unreturned.length > 3 ? `
+### 미반납 도서 (${unreturned.length}권)
+${unreturned.slice(0,3).map((book, i) => `${i+1}. ${(book.title||'제목없음').substring(0,30)} - ${book.borrower||'정보없음'}`).join('\n')}
+... 외 ${unreturned.length-3}권 더` : ''}
+
+---
+자동 생성: ${new Date().toLocaleString('ko-KR')}`;
 
     console.log('� Wiki 업데이트 준비:', {
       type: 'Korean markdown with real data',
