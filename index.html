@@ -234,17 +234,20 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     }
   };
   const btnRecent=document.getElementById('btnRecent');
-  btnRecent.onclick=()=>{
-    btnRecent.classList.toggle('active');
-    const on=btnRecent.classList.contains('active');
-    const dateIdx=findColIndex(library[0],['등록일','일자']);
-    const trs=document.querySelectorAll('#libraryTable tr');
-    for(let i=1;i<trs.length;i++){
-      const td=trs[i].querySelectorAll('td')[dateIdx];
-      const recent=td&&isRecent(td.textContent);
-      trs[i].style.display=(on&&!recent)?'none':'';
-    }
-  };
+btnRecent.onclick=()=>{
+  btnRecent.classList.toggle('active');
+  const on=btnRecent.classList.contains('active');
+  const dateIdx=findColIndex(library[0],['등록일','일자']);
+  const trs=document.querySelectorAll('#libraryTable tr');
+  for(let i=1;i<trs.length;i++){
+    const td=trs[i].querySelectorAll('td')[dateIdx];
+    const recent=td&&isRecent(td.textContent);
+    trs[i].style.display=(on&&!recent)?'none':'';
+  }
+
+  // ✅ 통계 차트는 항상 그대로 유지되도록 강제 표시
+  document.getElementById('chartWrap').classList.remove('hidden');
+};
 });
 
 /* ====== 최신순/오래된순 토글 ====== */
