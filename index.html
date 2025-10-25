@@ -36,6 +36,33 @@
   #historyModal th:nth-child(2), #historyModal td:nth-child(2){width:25%;}
   #historyModal th:last-child, #historyModal td:last-child{width:45%;}
   
+  /* 도서 미리보기 모달 스타일 */
+  #bookPreviewModal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;}
+  #bookPreviewModal .inner{background:#fff;border-radius:12px;max-width:600px;width:95%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);}
+  #bookPreviewModal .content{padding:24px;overflow:auto;flex:1;}
+  #bookPreviewModal .buttons{padding:16px 24px;border-top:1px solid #e2e8f0;background:#fff;border-radius:0 0 12px 12px;position:sticky;bottom:0;}
+  #bookPreviewModal .book-header{display:flex;gap:20px;margin-bottom:20px;}
+  #bookPreviewModal .book-cover{flex-shrink:0;}
+  #bookPreviewModal .book-cover img{width:120px;height:auto;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,.1);border:1px solid #e2e8f0;}
+  #bookPreviewModal .book-info{flex:1;min-width:0;}
+  #bookPreviewModal .book-title{font-size:20px;font-weight:700;color:#1f2937;margin:0 0 8px 0;line-height:1.3;}
+  #bookPreviewModal .book-author{color:#6b7280;font-size:16px;margin:0 0 6px 0;}
+  #bookPreviewModal .book-publisher{color:#9ca3af;font-size:14px;margin:0 0 12px 0;}
+  #bookPreviewModal .book-rating{display:flex;align-items:center;gap:8px;margin:8px 0;}
+  #bookPreviewModal .stars{color:#fbbf24;}
+  #bookPreviewModal .book-description{color:#4b5563;font-size:14px;line-height:1.6;margin-top:20px;}
+  #bookPreviewModal .book-meta{background:#f8fafc;border-radius:8px;padding:16px;margin-top:16px;}
+  #bookPreviewModal .book-meta .meta-item{display:flex;justify-content:space-between;margin:4px 0;font-size:13px;}
+  #bookPreviewModal .book-meta .meta-label{color:#6b7280;font-weight:500;}
+  #bookPreviewModal .book-meta .meta-value{color:#1f2937;}
+  #bookPreviewModal .loading{text-align:center;padding:40px;color:#6b7280;}
+  #bookPreviewModal .error{text-align:center;padding:40px;color:#dc2626;}
+  #bookPreviewModal .tab-buttons{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;}
+  #bookPreviewModal .tab-button{background:none;border:none;padding:8px 16px;cursor:pointer;color:#6b7280;font-size:14px;border-bottom:2px solid transparent;}
+  #bookPreviewModal .tab-button.active{color:#2563eb;border-bottom-color:#2563eb;font-weight:600;}
+  #bookPreviewModal .tab-content{display:none;}
+  #bookPreviewModal .tab-content.active{display:block;}
+  
   /* 페이지네이션 스타일 */
   .pagination{text-align:center;margin:16px 0;padding:12px;}
   .pagination button{background:#f8fafc;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 12px;margin:0 2px;cursor:pointer;font-size:14px;min-width:40px;}
@@ -78,6 +105,31 @@
     </div>
     <div class="buttons">
       <button onclick="closeHistory()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 도서 미리보기 모달 -->
+<div id="bookPreviewModal">
+  <div class="inner">
+    <div class="content">
+      <div class="tab-buttons">
+        <button class="tab-button active" onclick="switchTab('preview')">📚 도서 정보</button>
+        <button class="tab-button" onclick="switchTab('history')">📋 대출 이력</button>
+      </div>
+      
+      <div id="previewTab" class="tab-content active">
+        <div id="bookPreviewContent">
+          <div class="loading">📚 도서 정보를 불러오는 중...</div>
+        </div>
+      </div>
+      
+      <div id="historyTab" class="tab-content">
+        <div id="bookHistoryContent"></div>
+      </div>
+    </div>
+    <div class="buttons">
+      <button onclick="closeBookPreview()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
     </div>
   </div>
 </div>
@@ -254,7 +306,11 @@ function renderTableWithPagination(rows,id,withQR=false){
       if(tdTitle){
         tdTitle.style.color='#2563eb';
         tdTitle.style.cursor='pointer';
-        tdTitle.onclick=()=>showHistory(norm(rows[i][codeIdx]),norm(rows[i][titleIdx]));
+        tdTitle.style.fontWeight='500';
+        tdTitle.title='클릭하면 도서 상세정보를 확인할 수 있습니다';
+        const authorIdx = findColIndex(header,['지은이','저자']);
+        const authorText = authorIdx !== -1 ? rows[i][authorIdx] : '';
+        tdTitle.onclick=()=>showBookPreview(norm(rows[i][codeIdx]),norm(rows[i][titleIdx]),norm(authorText));
       }
       const tdQR=document.createElement('td');
       const code=rows[i][codeIdx];
@@ -366,7 +422,225 @@ function isOverdue(dateStr,status){
   return diff>14;
 }
 
-/* ====== 도서 이력 팝업 ====== */
+/* ====== 도서 미리보기 (구글 Books API) ====== */
+async function showBookPreview(code, title, author = '') {
+  const modal = document.getElementById('bookPreviewModal');
+  const previewContent = document.getElementById('bookPreviewContent');
+  const historyContent = document.getElementById('bookHistoryContent');
+  
+  // 모달 표시
+  modal.style.display = 'flex';
+  
+  // 탭 초기화 (도서 정보 탭을 기본으로)
+  switchTab('preview');
+  
+  // 로딩 상태
+  previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
+  
+  try {
+    // 구글 Books API 호출
+    const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${searchQuery}&maxResults=5&langRestrict=ko`;
+    
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      // 가장 적합한 책 찾기 (제목 유사도 기준)
+      const bestMatch = findBestBookMatch(data.items, title);
+      renderBookInfo(bestMatch, previewContent);
+    } else {
+      // API에서 결과가 없을 때 기본 정보 표시
+      renderBasicBookInfo(title, author, code, previewContent);
+    }
+    
+    // 이력 정보도 함께 준비
+    renderBookHistory(code, title, historyContent);
+    
+  } catch (error) {
+    console.error('도서 정보 로드 실패:', error);
+    renderBasicBookInfo(title, author, code, previewContent);
+    renderBookHistory(code, title, historyContent);
+  }
+  
+  // 팝업 외부 클릭 시 닫기 기능
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      closeBookPreview();
+    }
+  };
+  
+  // 팝업 내부 클릭 시 이벤트 버블링 방지
+  modal.querySelector('.inner').onclick = (e) => {
+    e.stopPropagation();
+  };
+}
+
+function findBestBookMatch(items, targetTitle) {
+  // 제목 유사도로 가장 적합한 책 찾기
+  let bestMatch = items[0];
+  let bestScore = 0;
+  
+  for (const item of items) {
+    const bookTitle = item.volumeInfo.title || '';
+    const score = calculateSimilarity(targetTitle.toLowerCase(), bookTitle.toLowerCase());
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = item;
+    }
+  }
+  
+  return bestMatch;
+}
+
+function calculateSimilarity(str1, str2) {
+  // 간단한 유사도 계산 (공통 단어 개수 기준)
+  const words1 = str1.split(/\s+/);
+  const words2 = str2.split(/\s+/);
+  let commonWords = 0;
+  
+  for (const word of words1) {
+    if (word.length > 1 && words2.some(w => w.includes(word) || word.includes(w))) {
+      commonWords++;
+    }
+  }
+  
+  return commonWords / Math.max(words1.length, words2.length);
+}
+
+function renderBookInfo(bookData, container) {
+  const info = bookData.volumeInfo;
+  const saleInfo = bookData.saleInfo || {};
+  
+  const title = info.title || '제목 없음';
+  const authors = info.authors ? info.authors.join(', ') : '저자 미상';
+  const publisher = info.publisher || '출판사 미상';
+  const publishedDate = info.publishedDate || '출간일 미상';
+  const description = info.description || '설명이 없습니다.';
+  const thumbnail = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
+  const pageCount = info.pageCount || '-';
+  const categories = info.categories ? info.categories.join(', ') : '-';
+  const language = info.language === 'ko' ? '한국어' : info.language || '-';
+  const rating = info.averageRating || 0;
+  const ratingsCount = info.ratingsCount || 0;
+  
+  container.innerHTML = `
+    <div class="book-header">
+      <div class="book-cover">
+        ${thumbnail ? `<img src="${thumbnail.replace('http:', 'https:')}" alt="책 표지" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjE2MCIgdmlld0JveD0iMCAwIDEyMCAxNjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iMTYwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik00MCA2MEg4MFY2NEg0MFY2MFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+'}alt="책 표지"'>` : '<div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>'}
+      </div>
+      <div class="book-info">
+        <h2 class="book-title">${title}</h2>
+        <p class="book-author">👤 ${authors}</p>
+        <p class="book-publisher">🏢 ${publisher}</p>
+        ${rating > 0 ? `
+          <div class="book-rating">
+            <span class="stars">${'★'.repeat(Math.floor(rating))}${'☆'.repeat(5-Math.floor(rating))}</span>
+            <span style="color:#6b7280;font-size:13px;">${rating}/5.0 (${ratingsCount}명)</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+    
+    <div class="book-meta">
+      <div class="meta-item">
+        <span class="meta-label">📅 출간일</span>
+        <span class="meta-value">${publishedDate}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">📄 페이지</span>
+        <span class="meta-value">${pageCount}페이지</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">🏷️ 분야</span>
+        <span class="meta-value">${categories}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">🌐 언어</span>
+        <span class="meta-value">${language}</span>
+      </div>
+    </div>
+    
+    <div class="book-description">
+      <strong>📝 도서 소개</strong><br><br>
+      ${description.length > 500 ? description.substring(0, 500) + '...' : description}
+    </div>
+  `;
+}
+
+function renderBasicBookInfo(title, author, code, container) {
+  container.innerHTML = `
+    <div class="book-header">
+      <div class="book-cover">
+        <div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>
+      </div>
+      <div class="book-info">
+        <h2 class="book-title">${title}</h2>
+        ${author ? `<p class="book-author">👤 ${author}</p>` : ''}
+        <p style="color:#6b7280;font-size:14px;">📚 코드: ${code}</p>
+      </div>
+    </div>
+    
+    <div class="book-description" style="text-align:center;color:#6b7280;padding:40px;">
+      상세한 도서 정보를 찾을 수 없습니다.<br>
+      도서관 내부 정보만 표시됩니다.
+    </div>
+  `;
+}
+
+function renderBookHistory(code, title, container) {
+  const recs = window.booksData.filter(r => norm(r[1]) === code);
+  
+  if (recs.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">대출 이력이 없습니다.</div>';
+  } else {
+    container.innerHTML = `
+      <h4 style="margin:0 0 16px 0;color:#1f2937;">📋 대출 이력 (총 ${recs.length}건)</h4>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="background:#f8fafc;">
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">등록일</th>
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">대여자</th>
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">상태</th>
+        </tr>
+        ${recs.map(r => `
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[0]}</td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[4]}</td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">
+              <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;
+                ${r[5].includes('대출') || r[5].includes('연체') ? 'background:#fef3c7;color:#92400e;' : 'background:#d1fae5;color:#047857;'}">
+                ${r[5]}
+              </span>
+            </td>
+          </tr>
+        `).join('')}
+      </table>
+    `;
+  }
+}
+
+function switchTab(tabName) {
+  // 탭 버튼 상태 변경
+  document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  // 선택된 탭 활성화
+  if (tabName === 'preview') {
+    document.querySelector('.tab-button').classList.add('active');
+    document.getElementById('previewTab').classList.add('active');
+  } else {
+    document.querySelectorAll('.tab-button')[1].classList.add('active');
+    document.getElementById('historyTab').classList.add('active');
+  }
+}
+
+function closeBookPreview() {
+  const modal = document.getElementById('bookPreviewModal');
+  modal.style.display = 'none';
+  modal.onclick = null;
+}
+
+/* ====== 기존 도서 이력 팝업 (호환성 유지) ====== */
 function showHistory(code,title){
   const modal=document.getElementById('historyModal');
   const histTitle=document.getElementById('histTitle');
