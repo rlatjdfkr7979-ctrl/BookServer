@@ -325,7 +325,7 @@ class DoorayIntegration {
       console.log('🔄 JSONP 스크립트 로딩 시도:', {
         url: script.src,
         callbackName: callbackName,
-        endpoint: endpoint,
+        action: action,
         params: params
       });
       
@@ -342,7 +342,7 @@ class DoorayIntegration {
           url: script.src,
           error: error,
           GAS_BACKEND_URL: GAS_BACKEND_URL,
-          endpoint: endpoint,
+          action: action,
           troubleshooting: {
             'URL 확인': 'Google Apps Script 배포 URL이 올바른지 확인',
             '권한 확인': 'GAS가 외부 접근 허용으로 배포되었는지 확인',
