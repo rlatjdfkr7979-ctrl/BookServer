@@ -24,6 +24,9 @@
   #libraryTable td.qr-col{width:90px !important;min-width:90px !important;text-align:center}
   #libraryTable td.qr-col .qr-btn{min-width:64px}
 
+  /* 긴 텍스트는 줄바꿈으로 표시 (기본 ellipsis를 열 단위로 무시) */
+  td.wrap-cell{white-space:normal !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;overflow-wrap:anywhere}
+
   /* 도서목록 테이블 컬럼 너비 (반응형) */
   #libraryTable th:nth-child(1),
   #libraryTable td:nth-child(1){width:7%} /* 코드번호 */
@@ -994,6 +997,11 @@ function renderTableWithPagination(rows,id,withQR=false){
   const header=rows[0];
   const table=document.getElementById(id);
   const finalHeader=withQR?[...header,'QR 생성']:header;
+  // 줄바꿈이 필요한 열 인덱스(제목/도서명, 기타/비고)
+  const wrapIdxSet = new Set([
+    findColIndex(header,['제목','도서명']),
+    findColIndex(header,['기타','비고'])
+  ].filter(idx=>idx>=0));
   
   // 현재 페이지의 데이터 계산
   const page = currentPage[id];
@@ -1039,7 +1047,18 @@ function renderTableWithPagination(rows,id,withQR=false){
     if (i >= rows.length) break;
     
     const tr=document.createElement('tr');
-    tr.innerHTML=rows[i].map((c,j)=>`<td>${c}</td>`).join('');
+    // 데이터 열들 렌더링(헤더 길이까지만)
+    for(let j=0;j<header.length;j++){
+      const td=document.createElement('td');
+      const cell=rows[i][j]==null?'':String(rows[i][j]);
+      // 전체 내용을 툴팁으로 제공
+      td.title = cell;
+      // 긴 텍스트는 줄바꿈 허용
+      if(wrapIdxSet.has(j)) td.classList.add('wrap-cell');
+      // 안전하게 텍스트로 삽입
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
     
     // 제목 클릭 시 이력 보기
     if(withQR){
