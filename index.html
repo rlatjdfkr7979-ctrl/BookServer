@@ -444,6 +444,9 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       const tr=trs[i];
       let shouldShow=true;
       
+      // 기존 클래스 초기화
+      tr.classList.remove('borrowed');
+      
       // 연체 색상 적용
       const statusTd=tr.querySelectorAll('td')[statusIdx];
       if(statusTd&&statusTd.textContent.includes('연체')){
