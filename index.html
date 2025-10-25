@@ -974,11 +974,21 @@ function generateQR({code,title,author,renter,status}){
   
   const url=`${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
   const layer=document.createElement('div');
-  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
-  layer.innerHTML=`<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
+  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1002;`;
+  layer.innerHTML=`<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,.25)"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
   document.body.appendChild(layer);
   new QRCode(layer.querySelector('#qrbox'),{text:url,width:220,height:220,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.H});
-  layer.querySelector('#qrClose').onclick=()=>layer.remove();
+  const innerBox = layer.firstElementChild;
+  const closeLayer = ()=>{ layer.remove(); document.removeEventListener('keydown', escHandler); };
+  // 닫기 버튼
+  layer.querySelector('#qrClose').onclick=closeLayer;
+  // 배경 클릭 시 닫기
+  layer.addEventListener('click', (e)=>{ if(e.target===layer) closeLayer(); });
+  // 내부 클릭은 버블링 막기
+  if(innerBox) innerBox.addEventListener('click', (e)=> e.stopPropagation());
+  // ESC로 닫기
+  const escHandler = (e)=>{ if(e.key==='Escape') closeLayer(); };
+  document.addEventListener('keydown', escHandler);
   layer.querySelector('#qrDown').onclick=()=>{const img=layer.querySelector('#qrbox img');const a=document.createElement('a');a.href=img.src;a.download=`${code}.png`;a.click();};
 }
 
