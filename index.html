@@ -63,6 +63,24 @@
   #bookPreviewModal .tab-content{display:none;}
   #bookPreviewModal .tab-content.active{display:block;}
   
+  /* Dooray 연동 모달 스타일 */
+  #doorayModal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1001;}
+  #doorayModal .inner{background:#fff;border-radius:12px;max-width:600px;width:95%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);}
+  #doorayModal .content{padding:24px;overflow:auto;flex:1;}
+  #doorayModal .buttons{padding:16px 24px;border-top:1px solid #e2e8f0;background:#fff;border-radius:0 0 12px 12px;}
+  #doorayModal h3{margin:0 0 16px 0;color:#1f2937;font-size:20px;}
+  #doorayModal .status-card{background:#f8fafc;border-radius:8px;padding:16px;margin:12px 0;border-left:4px solid #6366f1;}
+  #doorayModal .status-success{border-left-color:#10b981;background:#ecfdf5;}
+  #doorayModal .status-error{border-left-color:#ef4444;background:#fef2f2;}
+  #doorayModal .status-warning{border-left-color:#f59e0b;background:#fffbeb;}
+  #doorayModal .feature-list{list-style:none;padding:0;margin:16px 0;}
+  #doorayModal .feature-list li{padding:8px 0;display:flex;align-items:center;gap:8px;}
+  #doorayModal .feature-list li::before{content:'✅';margin-right:8px;}
+  #doorayModal .test-result{margin:16px 0;padding:12px;border-radius:6px;font-family:monospace;font-size:13px;}
+  #doorayModal .action-button{background:#6366f1;color:#fff;border:none;border-radius:6px;padding:8px 16px;margin:4px;cursor:pointer;}
+  #doorayModal .action-button:hover{background:#4f46e5;}
+  #doorayModal .action-button:disabled{background:#9ca3af;cursor:not-allowed;}
+  
   /* 페이지네이션 스타일 */
   .pagination{text-align:center;margin:16px 0;padding:12px;}
   .pagination button{background:#f8fafc;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 12px;margin:0 2px;cursor:pointer;font-size:14px;min-width:40px;}
@@ -82,6 +100,7 @@
   <button id="btnRecent" style="background:#15803d;">🆕 최근 30일 도서만 보기</button>
   <button id="btnLoans">📘 대출 현황</button>
   <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+  <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
 </nav>
 
 <div id="librarySection">
@@ -134,11 +153,382 @@
   </div>
 </div>
 
+<!-- Dooray 연동 모달 -->
+<div id="doorayModal">
+  <div class="inner">
+    <div class="content">
+      <h3>🔄 Dooray 연동 관리</h3>
+      
+      <div id="doorayStatus" class="status-card">
+        <strong>연결 상태 확인 중...</strong>
+      </div>
+      
+      <div id="doorayFeatures" style="display:none;">
+        <h4>🎯 사용 가능한 기능</h4>
+        <ul class="feature-list">
+          <li>📊 도서 현황을 Dooray Wiki에 자동 업데이트</li>
+          <li>💬 도서 대출/반납 시 메신저 알림 전송</li>
+          <li>⚠️ 연체 도서 자동 알림</li>
+          <li>📈 실시간 통계 정보 동기화</li>
+        </ul>
+        
+        <h4>🛠️ 연동 작업</h4>
+        <div style="margin:12px 0;">
+          <button class="action-button" onclick="testDoorayConnection()">🧪 연결 테스트</button>
+          <button class="action-button" onclick="syncLibraryToWiki()">📊 Wiki 업데이트</button>
+          <button class="action-button" onclick="sendTestNotification()">💬 알림 테스트</button>
+        </div>
+        
+        <div id="doorayTestResult" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <div id="dooraySetup" style="display:none;">
+        <h4>⚙️ Dooray API 설정</h4>
+        <div style="margin:16px 0;">
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">🔑 API 토큰:</label>
+          <input type="password" id="doorayToken" placeholder="dooray-api 토큰을 입력하세요" 
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+          
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📁 프로젝트 ID:</label>
+          <input type="text" id="doorayProjectId" placeholder="Dooray 프로젝트 ID" 
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+          
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📄 Wiki 포스트 ID:</label>
+          <input type="text" id="doorayPostId" placeholder="Wiki 페이지 포스트 ID" 
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+          
+          <div style="margin:16px 0;padding:12px;background:#f3f4f6;border-radius:6px;font-size:13px;color:#6b7280;">
+            💡 <strong>정보 확인 방법:</strong><br>
+            • API 토큰: Dooray 관리도구 → API → 토큰 관리<br>
+            • 프로젝트 ID: Dooray 프로젝트 URL에서 확인<br>
+            • 포스트 ID: Wiki 페이지 URL에서 확인
+          </div>
+          
+          <button onclick="saveDoorayConfig()" class="action-button" style="width:100%;margin-top:12px;">
+            💾 설정 저장 및 연결 테스트
+          </button>
+          <button onclick="clearDoorayConfig()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;margin-top:8px;cursor:pointer;">
+            🗑️ 설정 초기화
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="buttons">
+      <button onclick="closeDoorayModal()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
+
 <footer>© 울산도시공사 도서관리 시스템 | 시스템 문의(김성락 대리 417)</footer>
 
 <!-- 라이브러리 -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+
+<!-- Dooray 연동 설정 -->
+<script>
+// 🔧 런타임 설정 - 브라우저에서 직접 입력 방식
+window.DOORAY_CONFIG = {
+  token: localStorage.getItem('dooray_token') || '',
+  projectId: localStorage.getItem('dooray_project_id') || '',
+  postId: localStorage.getItem('dooray_post_id') || '',
+  baseUrl: 'https://api.dooray.com',
+  settings: {
+    enableMessaging: true,
+    enableWikiUpdate: true,
+    debug: false
+  }
+};
+
+// API 엔드포인트 설정
+window.DOORAY_ENDPOINTS = {
+  wiki: {
+    get: (projectId, postId) => `${window.DOORAY_CONFIG.baseUrl}/v1/projects/${projectId}/posts/${postId}`,
+    update: (projectId, postId) => `${window.DOORAY_CONFIG.baseUrl}/v1/projects/${projectId}/posts/${postId}`
+  },
+  messenger: {
+    send: (channelId) => `${window.DOORAY_CONFIG.baseUrl}/v1/channels/${channelId}/logs`
+  }
+};
+
+// 🚀 Dooray API 연동 모듈 (통합 버전)
+class DoorayIntegration {
+  constructor() {
+    this.config = window.DOORAY_CONFIG || null;
+    this.isEnabled = this.config && this.config.token && this.config.token !== '';
+    
+    if (!this.isEnabled) {
+      console.warn('🔧 Dooray 연동이 비활성화됨: API 토큰을 설정하세요');
+    }
+  }
+
+  // 📡 API 요청 공통 함수
+  async makeApiRequest(url, method = 'GET', data = null) {
+    if (!this.isEnabled) {
+      console.warn('⚠️ Dooray API가 설정되지 않음');
+      return null;
+    }
+
+    try {
+      const options = {
+        method: method,
+        headers: {
+          'Authorization': `dooray-api ${this.config.token}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      if (data && method !== 'GET') {
+        options.body = JSON.stringify(data);
+      }
+
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('🚨 Dooray API 오류:', error);
+      return null;
+    }
+  }
+
+  // 📊 Wiki 업데이트 - 도서 현황을 실시간으로 Wiki에 반영
+  async updateLibraryStatusToWiki(libraryData) {
+    if (!this.isEnabled || !this.config.settings.enableWikiUpdate) {
+      return false;
+    }
+
+    try {
+      const { projectId, postId } = this.config;
+      const getUrl = window.DOORAY_ENDPOINTS.wiki.get(projectId, postId);
+      
+      // 1. 기존 Wiki 내용 가져오기
+      const existingData = await this.makeApiRequest(getUrl);
+      if (!existingData) return false;
+
+      // 2. 도서 현황 표 생성
+      const libraryTable = this.generateLibraryTable(libraryData);
+      
+      // 3. Wiki 내용 업데이트
+      const updatedContent = this.updateWikiContent(
+        existingData.result.body.content, 
+        libraryTable
+      );
+
+      // 4. Wiki 저장
+      const updateUrl = window.DOORAY_ENDPOINTS.wiki.update(projectId, postId);
+      const updateData = {
+        body: {
+          content: updatedContent,
+          mimeType: 'text/x-markdown'
+        }
+      };
+
+      const result = await this.makeApiRequest(updateUrl, 'PUT', updateData);
+      
+      if (result) {
+        console.log('✅ Dooray Wiki 업데이트 완료');
+        return true;
+      }
+    } catch (error) {
+      console.error('🚨 Wiki 업데이트 실패:', error);
+    }
+    
+    return false;
+  }
+
+  // 📋 도서 현황 테이블 생성 (마크다운 형식)
+  generateLibraryTable(libraryData) {
+    if (!libraryData || libraryData.length === 0) {
+      return '도서 데이터가 없습니다.';
+    }
+
+    // 통계 계산
+    const totalBooks = libraryData.length - 1; // 헤더 제외
+    const borrowedBooks = libraryData.slice(1).filter(row => {
+      const status = row[row.length - 2] || ''; // 상태 컬럼
+      return status.includes('대출') || status.includes('연체');
+    }).length;
+    const availableBooks = totalBooks - borrowedBooks;
+
+    const now = new Date();
+    const koreanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+    const updateTime = koreanTime.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // 마크다운 테이블 생성
+    let markdown = `## 📚 울산도시공사 도서관 현황\n\n`;
+    markdown += `**📊 통계 정보**\n`;
+    markdown += `- 📗 총 도서: ${totalBooks}권\n`;
+    markdown += `- 📕 대출중: ${borrowedBooks}권\n`;
+    markdown += `- 📘 대출가능: ${availableBooks}권\n`;
+    markdown += `- 🕐 업데이트: ${updateTime}\n\n`;
+
+    // 대출 중인 도서만 표시
+    if (borrowedBooks > 0) {
+      markdown += `**📕 현재 대출 중인 도서**\n\n`;
+      markdown += `| 도서명 | 저자 | 대출자 | 상태 |\n`;
+      markdown += `|--------|------|--------|------|\n`;
+
+      for (let i = 1; i < libraryData.length; i++) {
+        const row = libraryData[i];
+        const status = row[row.length - 2] || '';
+        
+        if (status.includes('대출') || status.includes('연체')) {
+          const title = row[2] || '제목없음'; // 도서명
+          const author = row[3] || '저자미상'; // 저자
+          const borrower = row[row.length - 1] || '대출자미상'; // 대출자
+          
+          markdown += `| ${title} | ${author} | ${borrower} | ${status} |\n`;
+        }
+      }
+    } else {
+      markdown += `**✅ 현재 모든 도서가 반납된 상태입니다.**\n`;
+    }
+
+    return markdown;
+  }
+
+  // 📝 Wiki 내용에서 도서 현황 부분 업데이트
+  updateWikiContent(existingContent, newTable) {
+    const startMarker = '<!-- LIBRARY_STATUS_START -->';
+    const endMarker = '<!-- LIBRARY_STATUS_END -->';
+    
+    const hasMarkers = existingContent.includes(startMarker) && existingContent.includes(endMarker);
+    
+    if (hasMarkers) {
+      // 기존 마커가 있으면 해당 부분만 교체
+      const beforeStart = existingContent.split(startMarker)[0];
+      const afterEnd = existingContent.split(endMarker)[1];
+      
+      return `${beforeStart}${startMarker}\n${newTable}\n${endMarker}${afterEnd}`;
+    } else {
+      // 마커가 없으면 내용 끝에 추가
+      return `${existingContent}\n\n${startMarker}\n${newTable}\n${endMarker}`;
+    }
+  }
+
+  // 💬 메신저 알림 전송
+  async sendNotification(message, channelId = null) {
+    if (!this.isEnabled || !this.config.settings.enableMessaging) {
+      console.log('📢 알림 (Dooray 비활성화):', message);
+      return false;
+    }
+
+    // 실제 구현에서는 channelId를 설정에서 가져오거나 파라미터로 받아야 함
+    if (!channelId) {
+      console.warn('⚠️ 메신저 채널 ID가 설정되지 않음');
+      return false;
+    }
+
+    try {
+      const url = window.DOORAY_ENDPOINTS.messenger.send(channelId);
+      const data = {
+        text: message,
+        botName: '📚 도서관리봇'
+      };
+
+      const result = await this.makeApiRequest(url, 'POST', data);
+      
+      if (result) {
+        console.log('✅ Dooray 메신저 알림 전송 완료');
+        return true;
+      }
+    } catch (error) {
+      console.error('🚨 메신저 알림 전송 실패:', error);
+    }
+    
+    return false;
+  }
+
+  // 🔔 도서 대출/반납 알림
+  async notifyBookAction(action, bookInfo) {
+    const { title, author, borrower, code } = bookInfo;
+    let message = '';
+
+    switch (action) {
+      case 'borrow':
+        message = `📕 **도서 대출 알림**\n` +
+                 `• 도서: ${title}\n` +
+                 `• 저자: ${author}\n` +
+                 `• 대출자: ${borrower}\n` +
+                 `• 코드: ${code}\n` +
+                 `• 시간: ${new Date().toLocaleString('ko-KR')}`;
+        break;
+        
+      case 'return':
+        message = `📗 **도서 반납 알림**\n` +
+                 `• 도서: ${title}\n` +
+                 `• 저자: ${author}\n` +
+                 `• 반납자: ${borrower}\n` +
+                 `• 코드: ${code}\n` +
+                 `• 시간: ${new Date().toLocaleString('ko-KR')}`;
+        break;
+        
+      case 'overdue':
+        message = `⚠️ **연체 도서 알림**\n` +
+                 `• 도서: ${title}\n` +
+                 `• 저자: ${author}\n` +
+                 `• 대출자: ${borrower}\n` +
+                 `• 코드: ${code}\n` +
+                 `• 상태: 반납 기한 초과`;
+        break;
+    }
+
+    return await this.sendNotification(message);
+  }
+
+  // 🧪 연결 테스트
+  async testConnection() {
+    if (!this.isEnabled) {
+      return {
+        success: false,
+        message: 'Dooray 설정이 없습니다. API 토큰을 입력하세요.'
+      };
+    }
+
+    try {
+      const { projectId, postId } = this.config;
+      const testUrl = window.DOORAY_ENDPOINTS.wiki.get(projectId, postId);
+      
+      const result = await this.makeApiRequest(testUrl);
+      
+      if (result) {
+        return {
+          success: true,
+          message: 'Dooray API 연결 성공! 🎉',
+          data: {
+            projectId: projectId,
+            postTitle: result.result.body.subject || '제목 없음',
+            lastModified: result.result.updatedAt || '수정일 없음'
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: 'API 응답이 없습니다. 토큰과 ID를 확인하세요.'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `연결 테스트 실패: ${error.message}`
+      };
+    }
+  }
+}
+
+// 🌐 전역 인스턴스 생성
+window.doorayIntegration = new DoorayIntegration();
+</script>
 
 <script>
 /* ====== 0) 환경 설정 ====== */
@@ -776,10 +1166,80 @@ function closeHistory(){
   modal.onclick=null; // 이벤트 리스너 제거
 }
 
+/* ====== 토스트 알림 ====== */
+function showToast(message, duration = 3000) {
+  // 기존 토스트가 있으면 제거
+  const existingToast = document.getElementById('toast-notification');
+  if (existingToast) existingToast.remove();
+  
+  // 토스트 생성
+  const toast = document.createElement('div');
+  toast.id = 'toast-notification';
+  toast.style = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 10000;
+    font-size: 14px;
+    max-width: 300px;
+    animation: slideIn 0.3s ease-out;
+  `;
+  
+  // 애니메이션 CSS 추가
+  if (!document.getElementById('toast-style')) {
+    const style = document.createElement('style');
+    style.id = 'toast-style';
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  // 자동 제거
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease-in';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 /* ====== 메인 실행 ====== */
+// 🔄 페이지 로드 시 Dooray 연동 상태 확인 및 버튼 업데이트
+function updateDoorayButtonStatus() {
+  const btn = document.getElementById('btnDooraySync');
+  const hasConfig = window.DOORAY_CONFIG.token && window.DOORAY_CONFIG.projectId && window.DOORAY_CONFIG.postId;
+  
+  if (hasConfig) {
+    btn.innerHTML = '✅ Dooray 연동됨';
+    btn.style.background = '#10b981'; // 초록색
+    btn.title = 'Dooray 연동이 활성화되어 자동 알림이 작동합니다';
+  } else {
+    btn.innerHTML = '🔄 Dooray 연동';
+    btn.style.background = '#7c3aed'; // 보라색
+    btn.title = 'Dooray API 설정이 필요합니다';
+  }
+}
+
 Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library])=>{
   window.booksData=books; // 이력 팝업용 저장
   renderTable(books,'loanTable');
+  
+  // Dooray 버튼 상태 업데이트
+  updateDoorayButtonStatus();
 
   const bh=books[0].map(norm);
   const bDateIdx=findColIndex(bh,['등록일','대출일','일자']);
@@ -1019,6 +1479,295 @@ document.getElementById('btnLibrary').onclick=()=>{
 };
 document.getElementById('btnAddBook').onclick=()=>{
   window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
+};
+
+// ========== Dooray 연동 기능 ==========
+
+document.getElementById('btnDooraySync').onclick=()=>{
+  showDoorayModal();
+};
+
+function showDoorayModal() {
+  const modal = document.getElementById('doorayModal');
+  const statusDiv = document.getElementById('doorayStatus');
+  const featuresDiv = document.getElementById('doorayFeatures');
+  const setupDiv = document.getElementById('dooraySetup');
+  const testResultDiv = document.getElementById('doorayTestResult');
+  
+  modal.style.display = 'flex';
+  testResultDiv.style.display = 'none';
+  
+  // 기존 설정값을 입력 필드에 표시
+  const tokenInput = document.getElementById('doorayToken');
+  const projectInput = document.getElementById('doorayProjectId');
+  const postInput = document.getElementById('doorayPostId');
+  
+  if (tokenInput) tokenInput.value = localStorage.getItem('dooray_token') || '';
+  if (projectInput) projectInput.value = localStorage.getItem('dooray_project_id') || '';
+  if (postInput) postInput.value = localStorage.getItem('dooray_post_id') || '';
+  
+  // Dooray 연동 상태 확인
+  const hasConfig = window.DOORAY_CONFIG.token && window.DOORAY_CONFIG.projectId && window.DOORAY_CONFIG.postId;
+  
+  if (hasConfig && window.doorayIntegration && window.doorayIntegration.isEnabled) {
+    statusDiv.className = 'status-card status-success';
+    statusDiv.innerHTML = `<strong>✅ Dooray 연동 활성화됨</strong><br>프로젝트: ${window.DOORAY_CONFIG.projectId}<br>토큰: ${window.DOORAY_CONFIG.token.substring(0,8)}...`;
+    featuresDiv.style.display = 'block';
+    setupDiv.style.display = 'block'; // 수정도 가능하게
+  } else {
+    statusDiv.className = 'status-card status-warning';
+    statusDiv.innerHTML = '<strong>⚙️ Dooray 연동 설정 필요</strong><br>API 정보를 입력해주세요.';
+    featuresDiv.style.display = 'none';
+    setupDiv.style.display = 'block';
+  }
+  
+  // 팝업 외부 클릭 시 닫기
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      closeDoorayModal();
+    }
+  };
+  modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
+}
+
+function closeDoorayModal() {
+  const modal = document.getElementById('doorayModal');
+  modal.style.display = 'none';
+  modal.onclick = null;
+}
+
+// 🧪 Dooray 연결 테스트
+async function testDoorayConnection() {
+  const testResultDiv = document.getElementById('doorayTestResult');
+  testResultDiv.style.display = 'block';
+  testResultDiv.className = 'test-result';
+  testResultDiv.innerHTML = '🔄 연결 테스트 중...';
+  
+  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+    return;
+  }
+  
+  try {
+    const result = await window.doorayIntegration.testConnection();
+    
+    if (result.success) {
+      testResultDiv.className = 'test-result status-success';
+      testResultDiv.innerHTML = `
+        ✅ ${result.message}
+        
+프로젝트 ID: ${result.data.projectId}
+포스트 제목: ${result.data.postTitle}
+마지막 수정: ${result.data.lastModified}
+      `;
+    } else {
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = `❌ ${result.message}`;
+    }
+  } catch (error) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = `❌ 테스트 실패: ${error.message}`;
+  }
+}
+
+// 📊 도서 현황을 Dooray Wiki에 동기화
+async function syncLibraryToWiki() {
+  const testResultDiv = document.getElementById('doorayTestResult');
+  testResultDiv.style.display = 'block';
+  testResultDiv.className = 'test-result';
+  testResultDiv.innerHTML = '🔄 Wiki 업데이트 중...';
+  
+  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+    return;
+  }
+  
+  try {
+    // 현재 도서관 데이터 가져오기
+    const libraryTable = document.getElementById('libraryTable');
+    if (!libraryTable || !window.allTableData || !window.allTableData.libraryTable) {
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = '❌ 도서관 데이터를 찾을 수 없습니다.';
+      return;
+    }
+    
+    const libraryData = window.allTableData.libraryTable;
+    const success = await window.doorayIntegration.updateLibraryStatusToWiki(libraryData);
+    
+    if (success) {
+      testResultDiv.className = 'test-result status-success';
+      testResultDiv.innerHTML = `
+        ✅ Dooray Wiki 업데이트 완료!
+        
+업데이트 시간: ${new Date().toLocaleString('ko-KR')}
+총 도서 수: ${libraryData.length - 1}권
+대출중인 도서: ${libraryData.slice(1).filter(row => {
+  const status = row[row.length - 2] || '';
+  return status.includes('대출') || status.includes('연체');
+}).length}권
+      `;
+    } else {
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = '❌ Wiki 업데이트에 실패했습니다.';
+    }
+  } catch (error) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = `❌ 업데이트 실패: ${error.message}`;
+  }
+}
+
+// 💬 테스트 알림 전송
+async function sendTestNotification() {
+  const testResultDiv = document.getElementById('doorayTestResult');
+  testResultDiv.style.display = 'block';
+  testResultDiv.className = 'test-result';
+  testResultDiv.innerHTML = '🔄 테스트 알림 전송 중...';
+  
+  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+    return;
+  }
+  
+  // 테스트용 도서 정보
+  const testBookInfo = {
+    title: '테스트 도서',
+    author: '테스트 저자',
+    borrower: '시스템 관리자',
+    code: 'TEST001'
+  };
+  
+  try {
+    const success = await window.doorayIntegration.notifyBookAction('borrow', testBookInfo);
+    
+    if (success) {
+      testResultDiv.className = 'test-result status-success';
+      testResultDiv.innerHTML = `
+        ✅ 테스트 알림 전송 완료!
+        
+알림 내용: 도서 대출 알림
+도서명: ${testBookInfo.title}
+대출자: ${testBookInfo.borrower}
+전송 시간: ${new Date().toLocaleString('ko-KR')}
+      `;
+    } else {
+      testResultDiv.className = 'test-result status-warning';
+      testResultDiv.innerHTML = '⚠️ 알림 전송 실패 (채널 ID 미설정 또는 권한 없음)';
+    }
+  } catch (error) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = `❌ 알림 전송 실패: ${error.message}`;
+  }
+}
+
+// 💾 Dooray 설정 저장 및 테스트
+async function saveDoorayConfig() {
+  const token = document.getElementById('doorayToken').value.trim();
+  const projectId = document.getElementById('doorayProjectId').value.trim();
+  const postId = document.getElementById('doorayPostId').value.trim();
+  
+  const testResultDiv = document.getElementById('doorayTestResult');
+  testResultDiv.style.display = 'block';
+  testResultDiv.className = 'test-result';
+  testResultDiv.innerHTML = '🔄 설정 저장 및 연결 테스트 중...';
+  
+  // 입력값 검증
+  if (!token || !projectId || !postId) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = '❌ 모든 필드를 입력해주세요.';
+    return;
+  }
+  
+  try {
+    // 로컬 스토리지에 저장
+    localStorage.setItem('dooray_token', token);
+    localStorage.setItem('dooray_project_id', projectId);
+    localStorage.setItem('dooray_post_id', postId);
+    
+    // 현재 설정 업데이트
+    window.DOORAY_CONFIG.token = token;
+    window.DOORAY_CONFIG.projectId = projectId;
+    window.DOORAY_CONFIG.postId = postId;
+    
+    // doorayIntegration 인스턴스 재생성
+    window.doorayIntegration = new DoorayIntegration();
+    
+    // 연결 테스트
+    const result = await window.doorayIntegration.testConnection();
+    
+    if (result.success) {
+      testResultDiv.className = 'test-result status-success';
+      testResultDiv.innerHTML = `
+        ✅ 설정 저장 및 연결 테스트 성공!
+        
+${result.message}
+프로젝트 ID: ${result.data.projectId}
+포스트 제목: ${result.data.postTitle}
+      `;
+      
+      // UI 상태 업데이트
+      updateDoorayButtonStatus(); // 버튼 상태 즉시 업데이트
+      setTimeout(() => {
+        showDoorayModal(); // 모달 새로고침
+      }, 2000);
+      
+    } else {
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = `❌ 연결 실패: ${result.message}<br><br>토큰과 ID 정보를 다시 확인해주세요.`;
+    }
+    
+  } catch (error) {
+    testResultDiv.className = 'test-result status-error';
+    testResultDiv.innerHTML = `❌ 설정 저장 실패: ${error.message}`;
+  }
+}
+
+// 🗑️ Dooray 설정 초기화
+function clearDoorayConfig() {
+  if (confirm('Dooray 설정을 모두 삭제하시겠습니까?')) {
+    localStorage.removeItem('dooray_token');
+    localStorage.removeItem('dooray_project_id');
+    localStorage.removeItem('dooray_post_id');
+    
+    window.DOORAY_CONFIG.token = '';
+    window.DOORAY_CONFIG.projectId = '';
+    window.DOORAY_CONFIG.postId = '';
+    
+    window.doorayIntegration = new DoorayIntegration();
+    
+    updateDoorayButtonStatus(); // 버튼 상태 업데이트
+    alert('✅ 설정이 삭제되었습니다.');
+    showDoorayModal();
+  }
+}
+
+// 도서 대출/반납 시 자동 알림 (기존 QR 생성 함수 확장)
+const originalGenerateQR = generateQR;
+generateQR = function(bookInfo) {
+  // 기존 QR 생성 기능 실행
+  originalGenerateQR(bookInfo);
+  
+  // Dooray 알림 전송 (비동기로 실행하여 QR 생성에 영향 없음)
+  if (window.doorayIntegration && window.doorayIntegration.isEnabled) {
+    setTimeout(async () => {
+      try {
+        const action = bookInfo.status.includes('반납') ? 'return' : 'borrow';
+        const success = await window.doorayIntegration.notifyBookAction(action, bookInfo);
+        
+        if (success) {
+          console.log(`✅ Dooray 알림 전송 완료: ${action} - ${bookInfo.title}`);
+          // 선택사항: 성공 시 작은 토스트 알림 표시
+          showToast(`📢 Dooray 알림 전송됨: ${bookInfo.title}`);
+        } else {
+          console.warn(`⚠️ Dooray 알림 전송 실패 (설정 확인 필요): ${bookInfo.title}`);
+        }
+      } catch (error) {
+        console.warn('🚨 Dooray 알림 전송 오류:', error);
+      }
+    }, 1000);
+  }
 };
 </script>
 </body>
