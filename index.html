@@ -25,7 +25,9 @@
   .hidden{display:none}
   footer{text-align:center;color:#667085;font-size:13px;margin-top:18px}
   #historyModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;}
-  #historyModal .inner{background:#fff;padding:20px;border-radius:10px;max-width:520px;width:90%;max-height:80vh;overflow:auto;}
+  #historyModal .inner{background:#fff;border-radius:10px;max-width:520px;width:90%;max-height:80vh;display:flex;flex-direction:column;}
+  #historyModal .content{padding:20px;overflow:auto;flex:1;}
+  #historyModal .buttons{padding:12px 20px;border-top:1px solid #e2e8f0;background:#fff;border-radius:0 0 10px 10px;position:sticky;bottom:0;}
 </style>
 </head>
 <body>
@@ -53,10 +55,12 @@
 <!-- 도서 이력 팝업 -->
 <div id="historyModal">
   <div class="inner">
-    <h3 id="histTitle">📖 도서 이력</h3>
-    <div id="histContent"></div>
-    <div style="text-align:center;margin-top:12px;">
-      <button onclick="closeHistory()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 12px;">닫기</button>
+    <div class="content">
+      <h3 id="histTitle">📖 도서 이력</h3>
+      <div id="histContent"></div>
+    </div>
+    <div class="buttons">
+      <button onclick="closeHistory()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
     </div>
   </div>
 </div>
@@ -265,8 +269,24 @@ function showHistory(code,title){
     histContent.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th>등록일</th><th>대여자</th><th>상태</th></tr>'+recs.map(r=>`<tr><td>${r[0]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`).join('')+'</table>';
   }
   modal.style.display='flex';
+  
+  // 팝업 외부 클릭 시 닫기 기능
+  modal.onclick=(e)=>{
+    if(e.target===modal){
+      closeHistory();
+    }
+  };
+  
+  // 팝업 내부 클릭 시 이벤트 버블링 방지
+  modal.querySelector('.inner').onclick=(e)=>{
+    e.stopPropagation();
+  };
 }
-function closeHistory(){document.getElementById('historyModal').style.display='none';}
+function closeHistory(){
+  const modal=document.getElementById('historyModal');
+  modal.style.display='none';
+  modal.onclick=null; // 이벤트 리스너 제거
+}
 
 /* ====== 메인 실행 ====== */
 Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library])=>{
