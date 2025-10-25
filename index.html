@@ -2082,8 +2082,8 @@ ${unreturned.length > 0 ? `
 *Auto-generated report from Library Management System*  
 *Last updated: ${new Date().toLocaleString('ko-KR')}*`;
 
-    // 한글 버전도 준비 (Base64 인코딩으로 안전하게 전송)
-    const koreanContent = `# 📚 도서관리 현황
+    // 실제 도서 데이터를 포함한 한글 버전
+    let koreanContent = `# 📚 도서관리 현황
 
 **업데이트 시간:** ${new Date().toLocaleString('ko-KR')}
 
@@ -2099,30 +2099,56 @@ ${unreturned.length > 0 ? `
 
 ${unreturned.length === 0 ? 
   '✅ **모든 도서가 반납되었습니다!** 🎉' : 
-  `⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다**`}
+  `⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다**`}`;
 
-${unreturned.length > 0 ? `
+    // 미반납 도서가 있으면 상세 목록 추가
+    if (unreturned.length > 0) {
+      koreanContent += `\n\n### 📋 미반납 도서 목록\n\n`;
+      koreanContent += `| No | 도서코드 | 도서명 | 저자 | 대출자 | 상태 |\n`;
+      koreanContent += `|----|----------|--------|------|--------|------|\n`;
+      
+      // 처음 10권만 표시 (너무 길어지지 않도록)
+      const displayBooks = unreturned.slice(0, 10);
+      displayBooks.forEach((book, index) => {
+        koreanContent += `| ${index + 1} | ${book.bookCode || '-'} | ${book.title || '제목없음'} | ${book.author || '저자미상'} | ${book.borrower || '-'} | ${book.status || '-'} |\n`;
+      });
+      
+      if (unreturned.length > 10) {
+        koreanContent += `\n*... 외 ${unreturned.length - 10}권 더 있음*\n`;
+      }
+      
+      koreanContent += `\n### � 상세 분석\n`;
+      
+      // 연체 도서 개수
+      const overdueCount = unreturned.filter(book => 
+        book.status && book.status.includes('연체')
+      ).length;
+      
+      if (overdueCount > 0) {
+        koreanContent += `- 🚨 **연체 도서**: ${overdueCount}권\n`;
+      }
+      
+      koreanContent += `- 📅 **대출중 도서**: ${unreturned.length - overdueCount}권\n`;
+      koreanContent += `- 🎯 **목표 반납률**: 100%\n`;
+      koreanContent += `- 📈 **현재 반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n`;
+    }
 
-### 📋 미반납 도서 상세정보
-- 현재 ${unreturned.length}권이 미반납 상태
-- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
-- 미반납 도서에 대한 조치가 필요합니다
+    koreanContent += `\n---\n*도서관리 시스템에서 자동 생성된 보고서*  \n*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
 
-` : ''}
+    // 이제 한글 버전으로 전환 (Base64 인코딩으로 안전하게 전송)
+    const finalContent = koreanContent;
 
----
-*도서관리 시스템에서 자동 생성된 보고서*  
-*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
-
-    // Base64 인코딩이 작동하는지 먼저 영어 버전으로 테스트
-    const finalContent = testContent; // 성공하면 koreanContent로 변경
-
-    console.log('🔤 전송할 콘텐츠:', {
-      type: 'Formatted markdown',
+    console.log('� Wiki 업데이트 준비:', {
+      type: 'Korean markdown with real data',
       length: finalContent.length,
       hasKorean: /[가-힣]/.test(finalContent),
-      preview: finalContent.substring(0, 150) + '...'
+      totalBooks: libraryData.length - 1,
+      unreturnedBooks: unreturned.length,
+      returnRate: ((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1) + '%',
+      preview: finalContent.substring(0, 200) + '...'
     });
+    
+    console.log('📋 미반납 도서 샘플:', unreturned.slice(0, 3));
 
     // Google Apps Script를 통해 Wiki 업데이트
     const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
