@@ -183,25 +183,33 @@
       </div>
       
       <div id="dooraySetup" style="display:none;">
-        <h4>⚙️ Dooray API 설정</h4>
+        <h4>⚙️ Google Apps Script 백엔드 설정</h4>
         <div style="margin:16px 0;">
-          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">🔑 API 토큰:</label>
-          <input type="password" id="doorayToken" placeholder="dooray-api 토큰을 입력하세요" 
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">🌐 백엔드 URL:</label>
+          <input type="url" id="gasBackendUrl" placeholder="https://script.google.com/macros/s/.../exec" 
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
           
-          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📁 프로젝트 ID:</label>
-          <input type="text" id="doorayProjectId" placeholder="Dooray 프로젝트 ID" 
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📁 Wiki ID:</label>
+          <input type="text" id="doorayWikiId" placeholder="Dooray Wiki ID (예: 3971855165716167130)" 
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
           
-          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📄 Wiki 포스트 ID:</label>
-          <input type="text" id="doorayPostId" placeholder="Wiki 페이지 포스트 ID" 
+          <label style="display:block;margin:8px 0;color:#374151;font-weight:500;">📄 Page ID:</label>
+          <input type="text" id="doorayPageId" placeholder="Wiki Page ID (예: 4185119590638689477)" 
                  style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+          
+          <div style="margin:16px 0;padding:12px;background:#e0f2fe;border-radius:6px;font-size:13px;color:#0277bd;border-left:4px solid #0288d1;">
+            � <strong>Google Apps Script 백엔드 설정:</strong><br>
+            1. library-gas-backend.js를 Google Apps Script에 복사<br>
+            2. 실제 Dooray API 토큰으로 교체<br>
+            3. 웹앱으로 배포 후 URL 복사<br>
+            4. 위 백엔드 URL 필드에 입력
+          </div>
           
           <div style="margin:16px 0;padding:12px;background:#f3f4f6;border-radius:6px;font-size:13px;color:#6b7280;">
             💡 <strong>정보 확인 방법:</strong><br>
-            • API 토큰: Dooray 관리도구 → API → 토큰 관리<br>
-            • 프로젝트 ID: Dooray 프로젝트 URL에서 확인<br>
-            • 포스트 ID: Wiki 페이지 URL에서 확인
+            • Wiki ID: 두레이.js의 WIKI_ID 값 (3971855165716167130)<br>
+            • Page ID: 두레이.js의 PAGE_ID 값 (4185119590638689477)<br>
+            • 또는 Wiki URL: https://dooray.com/.../wikis/<strong>WIKI_ID</strong>/pages/<strong>PAGE_ID</strong>
           </div>
           
           <button onclick="saveDoorayConfig()" class="action-button" style="width:100%;margin-top:12px;">
@@ -230,12 +238,11 @@
 
 <!-- Dooray 연동 설정 -->
 <script>
-// 🔧 런타임 설정 - 브라우저에서 직접 입력 방식
+// 🔧 런타임 설정 - Google Apps Script 백엔드 방식
 window.DOORAY_CONFIG = {
-  token: localStorage.getItem('dooray_token') || '',
-  projectId: localStorage.getItem('dooray_project_id') || '',
-  postId: localStorage.getItem('dooray_post_id') || '',
-  baseUrl: 'https://api.dooray.com',
+  wikiId: localStorage.getItem('dooray_wiki_id') || '',
+  pageId: localStorage.getItem('dooray_page_id') || '',
+  backendUrl: localStorage.getItem('gas_backend_url') || '',
   settings: {
     enableMessaging: true,
     enableWikiUpdate: true,
@@ -258,43 +265,56 @@ window.DOORAY_ENDPOINTS = {
 class DoorayIntegration {
   constructor() {
     this.config = window.DOORAY_CONFIG || null;
-    this.isEnabled = this.config && this.config.token && this.config.token !== '';
+    this.isEnabled = this.config && this.config.wikiId && this.config.pageId && localStorage.getItem('gas_backend_url');
     
     if (!this.isEnabled) {
-      console.warn('🔧 Dooray 연동이 비활성화됨: API 토큰을 설정하세요');
+      console.warn('🔧 Dooray 연동이 비활성화됨: Google Apps Script 백엔드 설정을 확인하세요');
     }
   }
 
-  // 📡 API 요청 공통 함수
-  async makeApiRequest(url, method = 'GET', data = null) {
+  // 📡 Google Apps Script 백엔드를 통한 API 요청
+  async makeApiRequest(action, additionalParams = {}) {
     if (!this.isEnabled) {
       console.warn('⚠️ Dooray API가 설정되지 않음');
       return null;
     }
 
+    // Google Apps Script 웹앱 URL (사용자가 설정해야 함)
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    
+    if (!GAS_BACKEND_URL) {
+      throw new Error('Google Apps Script 백엔드 URL이 설정되지 않았습니다. 설정에서 URL을 입력해주세요.');
+    }
+
     try {
-      const options = {
-        method: method,
+      const params = new URLSearchParams({
+        action: action,
+        wikiId: this.config.wikiId,
+        pageId: this.config.pageId,
+        ...additionalParams
+      });
+
+      const response = await fetch(`${GAS_BACKEND_URL}?${params}`, {
+        method: 'GET',
         headers: {
-          'Authorization': `dooray-api ${this.config.token}`,
           'Content-Type': 'application/json'
         }
-      };
-
-      if (data && method !== 'GET') {
-        options.body = JSON.stringify(data);
-      }
-
-      const response = await fetch(url, options);
+      });
       
       if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+        throw new Error(`백엔드 요청 실패: ${response.status} ${response.statusText}`);
       }
 
-      return await response.json();
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      return result;
     } catch (error) {
-      console.error('🚨 Dooray API 오류:', error);
-      return null;
+      console.error('🚨 백엔드 API 오류:', error);
+      throw error;
     }
   }
 
@@ -494,36 +514,40 @@ class DoorayIntegration {
     if (!this.isEnabled) {
       return {
         success: false,
-        message: 'Dooray 설정이 없습니다. API 토큰을 입력하세요.'
+        message: 'Dooray 설정이 없습니다. 프로젝트/포스트 ID를 입력하세요.'
       };
     }
 
     try {
-      const { projectId, postId } = this.config;
-      const testUrl = window.DOORAY_ENDPOINTS.wiki.get(projectId, postId);
+      const result = await this.makeApiRequest('test');
       
-      const result = await this.makeApiRequest(testUrl);
-      
-      if (result) {
+      if (result.success) {
         return {
           success: true,
-          message: 'Dooray API 연결 성공! 🎉',
-          data: {
-            projectId: projectId,
-            postTitle: result.result.body.subject || '제목 없음',
-            lastModified: result.result.updatedAt || '수정일 없음'
-          }
+          message: result.message,
+          data: result.data
         };
       } else {
         return {
           success: false,
-          message: 'API 응답이 없습니다. 토큰과 ID를 확인하세요.'
+          message: result.message || 'Google Apps Script 백엔드 연결 실패'
         };
       }
     } catch (error) {
+      let errorMessage = `연결 테스트 실패: ${error.message}`;
+      
+      if (error.message.includes('백엔드 URL')) {
+        errorMessage += `
+
+🔧 Google Apps Script 백엔드 설정 방법:
+1. library-gas-backend.js 파일을 Google Apps Script에 배포
+2. 웹앱으로 배포 후 URL 복사
+3. 아래 백엔드 URL 설정에 입력`;
+      }
+      
       return {
         success: false,
-        message: `연결 테스트 실패: ${error.message}`
+        message: errorMessage
       };
     }
   }
@@ -1501,25 +1525,25 @@ function showDoorayModal() {
   testResultDiv.style.display = 'none';
   
   // 기존 설정값을 입력 필드에 표시
-  const tokenInput = document.getElementById('doorayToken');
-  const projectInput = document.getElementById('doorayProjectId');
-  const postInput = document.getElementById('doorayPostId');
+  const backendUrlInput = document.getElementById('gasBackendUrl');
+  const wikiIdInput = document.getElementById('doorayWikiId');
+  const pageIdInput = document.getElementById('doorayPageId');
   
-  if (tokenInput) tokenInput.value = localStorage.getItem('dooray_token') || '';
-  if (projectInput) projectInput.value = localStorage.getItem('dooray_project_id') || '';
-  if (postInput) postInput.value = localStorage.getItem('dooray_post_id') || '';
+  if (backendUrlInput) backendUrlInput.value = localStorage.getItem('gas_backend_url') || '';
+  if (wikiIdInput) wikiIdInput.value = localStorage.getItem('dooray_wiki_id') || '';
+  if (pageIdInput) pageIdInput.value = localStorage.getItem('dooray_page_id') || '';
   
   // Dooray 연동 상태 확인
-  const hasConfig = window.DOORAY_CONFIG.token && window.DOORAY_CONFIG.projectId && window.DOORAY_CONFIG.postId;
+  const hasConfig = localStorage.getItem('gas_backend_url') && window.DOORAY_CONFIG.wikiId && window.DOORAY_CONFIG.pageId;
   
   if (hasConfig && window.doorayIntegration && window.doorayIntegration.isEnabled) {
     statusDiv.className = 'status-card status-success';
-    statusDiv.innerHTML = `<strong>✅ Dooray 연동 활성화됨</strong><br>프로젝트: ${window.DOORAY_CONFIG.projectId}<br>토큰: ${window.DOORAY_CONFIG.token.substring(0,8)}...`;
+    statusDiv.innerHTML = `<strong>✅ Dooray 연동 활성화됨</strong><br>Wiki ID: ${window.DOORAY_CONFIG.wikiId}<br>Page ID: ${window.DOORAY_CONFIG.pageId}`;
     featuresDiv.style.display = 'block';
     setupDiv.style.display = 'block'; // 수정도 가능하게
   } else {
     statusDiv.className = 'status-card status-warning';
-    statusDiv.innerHTML = '<strong>⚙️ Dooray 연동 설정 필요</strong><br>API 정보를 입력해주세요.';
+    statusDiv.innerHTML = '<strong>⚙️ Dooray 연동 설정 필요</strong><br>Google Apps Script 백엔드 정보를 입력해주세요.';
     featuresDiv.style.display = 'none';
     setupDiv.style.display = 'block';
   }
@@ -1669,28 +1693,28 @@ async function sendTestNotification() {
 async function saveDoorayConfig() {
   console.log('💾 saveDoorayConfig 함수 실행됨'); // 디버그용
   
-  const tokenInput = document.getElementById('doorayToken');
-  const projectInput = document.getElementById('doorayProjectId');  
-  const postInput = document.getElementById('doorayPostId');
+  const backendUrlInput = document.getElementById('gasBackendUrl');
+  const wikiIdInput = document.getElementById('doorayWikiId');  
+  const pageIdInput = document.getElementById('doorayPageId');
   const testResultDiv = document.getElementById('doorayTestResult');
   
   // 요소 존재 확인
-  if (!tokenInput || !projectInput || !postInput || !testResultDiv) {
+  if (!backendUrlInput || !wikiIdInput || !pageIdInput || !testResultDiv) {
     alert('❌ 입력 필드를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
-    console.error('필수 요소를 찾을 수 없음:', {tokenInput, projectInput, postInput, testResultDiv});
+    console.error('필수 요소를 찾을 수 없음:', {backendUrlInput, wikiIdInput, pageIdInput, testResultDiv});
     return;
   }
   
-  const token = tokenInput.value.trim();
-  const projectId = projectInput.value.trim();
-  const postId = postInput.value.trim();
+  const backendUrl = backendUrlInput.value.trim();
+  const wikiId = wikiIdInput.value.trim();
+  const pageId = pageIdInput.value.trim();
   
   testResultDiv.style.display = 'block';
   testResultDiv.className = 'test-result';
   testResultDiv.innerHTML = '🔄 설정 저장 및 연결 테스트 중...';
   
   // 입력값 검증
-  if (!token || !projectId || !postId) {
+  if (!backendUrl || !wikiId || !pageId) {
     testResultDiv.className = 'test-result status-error';
     testResultDiv.innerHTML = '❌ 모든 필드를 입력해주세요.';
     return;
@@ -1700,9 +1724,9 @@ async function saveDoorayConfig() {
     console.log('💾 localStorage에 설정 저장 중...');
     
     // 로컬 스토리지에 저장
-    localStorage.setItem('dooray_token', token);
-    localStorage.setItem('dooray_project_id', projectId);
-    localStorage.setItem('dooray_post_id', postId);
+    localStorage.setItem('gas_backend_url', backendUrl);
+    localStorage.setItem('dooray_wiki_id', wikiId);
+    localStorage.setItem('dooray_page_id', pageId);
     
     console.log('✅ localStorage 저장 완료');
     
@@ -1714,9 +1738,8 @@ async function saveDoorayConfig() {
       return;
     }
     
-    window.DOORAY_CONFIG.token = token;
-    window.DOORAY_CONFIG.projectId = projectId;
-    window.DOORAY_CONFIG.postId = postId;
+    window.DOORAY_CONFIG.wikiId = wikiId;
+    window.DOORAY_CONFIG.pageId = pageId;
     
     console.log('✅ DOORAY_CONFIG 업데이트 완료');
     
@@ -1785,13 +1808,12 @@ function testDooraySetup() {
 // 🗑️ Dooray 설정 초기화
 function clearDoorayConfig() {
   if (confirm('Dooray 설정을 모두 삭제하시겠습니까?')) {
-    localStorage.removeItem('dooray_token');
-    localStorage.removeItem('dooray_project_id');
-    localStorage.removeItem('dooray_post_id');
+    localStorage.removeItem('gas_backend_url');
+    localStorage.removeItem('dooray_wiki_id');
+    localStorage.removeItem('dooray_page_id');
     
-    window.DOORAY_CONFIG.token = '';
-    window.DOORAY_CONFIG.projectId = '';
-    window.DOORAY_CONFIG.postId = '';
+    window.DOORAY_CONFIG.wikiId = '';
+    window.DOORAY_CONFIG.pageId = '';
     
     window.doorayIntegration = new DoorayIntegration();
     
