@@ -35,6 +35,7 @@
   <button id="btnLoans" class="active">📘 대출 현황</button>
   <button id="btnLibrary">📗 전체 도서목록</button>
   <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
+  <button id="btnNewest" class="filter" style="background:#7c3aed;">📈 최신 도서 순으로 보기</button>
   <button id="btnRecent" style="background:#15803d;">🆕 최근 30일 도서만 보기</button>
   <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
 </nav>
@@ -328,19 +329,75 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
   }
 
   // ✅ 대출 중 필터
-  const btn=document.getElementById('btnBorrowed');
-  let on=false;
-  btn.onclick=()=>{
-    on=!on;btn.classList.toggle('active',on);
+  const btnBorrowed=document.getElementById('btnBorrowed');
+  let borrowedOn=false;
+  btnBorrowed.onclick=()=>{
+    borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
     const header=library[0];
     const statusIdx=findColIndex(header,['상태','대출여부']);
     const trs=document.querySelectorAll('#libraryTable tr');
     for(let i=1;i<trs.length;i++){
       const td=trs[i].querySelectorAll('td')[statusIdx];
       const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
-      trs[i].style.display=(on&&!isBorrowed)?'none':'';
+      trs[i].style.display=(borrowedOn&&!isBorrowed)?'none':'';
       trs[i].classList.toggle('borrowed',isBorrowed);
     }
+  };
+
+  // ✅ 최신 도서 순 필터 (library.csv 데이터 역순 출력)
+  const btnNewest=document.getElementById('btnNewest');
+  let newestOn=false;
+  let originalLibraryData=[...library]; // 원본 데이터 보존
+  btnNewest.onclick=()=>{
+    newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
+    
+    if(newestOn){
+      // 데이터 행들을 역순으로 정렬 (헤더는 그대로)
+      const reversedLibrary=[library[0],...library.slice(1).reverse()];
+      renderTable(reversedLibrary,'libraryTable',true);
+      
+      // 연체 색상 다시 적용
+      const trs=document.querySelectorAll('#libraryTable tr');
+      const statusIdx=findColIndex(library[0],['상태','대출여부']);
+      for(let i=1;i<trs.length;i++){
+        const td=trs[i].querySelectorAll('td')[statusIdx];
+        if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
+      }
+      
+      // 대출 중 필터가 활성화되어 있다면 다시 적용
+      if(borrowedOn){
+        for(let i=1;i<trs.length;i++){
+          const td=trs[i].querySelectorAll('td')[statusIdx];
+          const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
+          trs[i].style.display=(!isBorrowed)?'none':'';
+          trs[i].classList.toggle('borrowed',isBorrowed);
+        }
+      }
+    }else{
+      // 원본 순서로 복원
+      renderTable(originalLibraryData,'libraryTable',true);
+      
+      // 연체 색상 다시 적용
+      const trs=document.querySelectorAll('#libraryTable tr');
+      const statusIdx=findColIndex(library[0],['상태','대출여부']);
+      for(let i=1;i<trs.length;i++){
+        const td=trs[i].querySelectorAll('td')[statusIdx];
+        if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
+      }
+      
+      // 대출 중 필터가 활성화되어 있다면 다시 적용
+      if(borrowedOn){
+        for(let i=1;i<trs.length;i++){
+          const td=trs[i].querySelectorAll('td')[statusIdx];
+          const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
+          trs[i].style.display=(!isBorrowed)?'none':'';
+          trs[i].classList.toggle('borrowed',isBorrowed);
+        }
+      }
+    }
+    
+    // 검색 기능 다시 바인딩
+    addSearch('searchLibrary','libraryTable');
   };
 });
 
