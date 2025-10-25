@@ -2176,7 +2176,7 @@ ${unreturned.length === 0 ?
       displayBooks.forEach((book, i) => {
         const title = (book.title || '제목없음').substring(0, 30);
         const borrower = book.borrower || '정보없음';
-        lines.push(`${i+1}. 📖 **${title}** - 👤 ${borrower}`);
+        lines.push(`${i+1}. 📖 **${title}** - 👤 ${borrower}  `);
       });
       
       if (unreturned.length > 5) {
@@ -2188,7 +2188,7 @@ ${unreturned.length === 0 ?
     lines.push('');
     lines.push('---');
     lines.push('');
-    lines.push('🤖 **자동 생성 보고서**');
+    lines.push('🤖 **자동 생성 보고서**  ');
     lines.push(`📅 **생성 시간:** ${new Date().toLocaleString('ko-KR')}`);
     
     const finalContent = lines.join('\n');
