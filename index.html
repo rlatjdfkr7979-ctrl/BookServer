@@ -298,10 +298,21 @@ function renderTableWithPagination(rows,id,withQR=false){
     
     const tr=document.createElement('tr');
     tr.innerHTML=rows[i].map((c,j)=>`<td>${c}</td>`).join('');
+    
     // 제목 클릭 시 이력 보기
     if(withQR){
       const titleIdx=findColIndex(header,['제목','도서명']);
       const codeIdx=findColIndex(header,['코드','코드번호']);
+      const statusIdx=findColIndex(header,['상태','대출여부']);
+      
+      // 상태에 따른 행 색상 적용
+      const rowStatus = rows[i][statusIdx] || '';
+      if(rowStatus.includes('연체')){
+        tr.classList.add('overdue');
+      } else if(rowStatus.includes('대출') || rowStatus.includes('대여')){
+        tr.classList.add('borrowed');
+      }
+      
       const tdTitle=tr.children[titleIdx];
       if(tdTitle){
         tdTitle.style.color='#2563eb';
@@ -378,6 +389,25 @@ function sortTable(originalRows,tableId,colIdx,withQR=false){
   const currentTh=table.querySelectorAll('th')[colIdx];
   currentTh.textContent+=isAsc?' ↑':' ↓';
   currentTh.style.background='#dbeafe';
+  
+  // 정렬 후 행 색상 다시 적용 (도서목록의 경우)
+  if(withQR){
+    const statusIdx=findColIndex(header,['상태','대출여부']);
+    const allRows = table.querySelectorAll('tr');
+    for(let rowIdx = 1; rowIdx < allRows.length; rowIdx++){
+      const tr = allRows[rowIdx];
+      const statusCell = tr.cells[statusIdx];
+      if(statusCell){
+        const statusText = statusCell.textContent || '';
+        tr.classList.remove('borrowed', 'overdue');
+        if(statusText.includes('연체')){
+          tr.classList.add('overdue');
+        } else if(statusText.includes('대출') || statusText.includes('대여')){
+          tr.classList.add('borrowed');
+        }
+      }
+    }
+  }
 }
 
 /* ====== 검색 ====== */
@@ -722,14 +752,6 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
   renderTable(library,'libraryTable',true);
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
-
-  // ✅ 연체 색상 표시
-  const trs=document.querySelectorAll('#libraryTable tr');
-  const statusIdx=findColIndex(library[0],['상태','대출여부']);
-  for(let i=1;i<trs.length;i++){
-    const td=trs[i].querySelectorAll('td')[statusIdx];
-    if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
-  }
 
   // ✅ 대출 중 필터
   const btnBorrowed=document.getElementById('btnBorrowed');
