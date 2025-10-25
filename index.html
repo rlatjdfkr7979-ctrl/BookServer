@@ -1851,9 +1851,24 @@ async function syncLibraryToWiki() {
     wikiContent += `---\n`;
     wikiContent += `*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
 
+    // 간단한 요약 버전 (URL 길이 제한 해결)
+    const shortSummary = `# 📚 도서관리 현황 (${currentDate})
+
+## 📊 요약
+- 전체 도서: ${libraryData.length - 1}권
+- 미반납 도서: ${unreturned.length}권
+- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+
+${unreturned.length === 0 ? 
+  '🎉 모든 도서가 반납되었습니다!' : 
+  `⚠️ ${unreturned.length}권의 도서가 미반납 상태입니다.`}
+
+---
+*업데이트: ${currentDate}*`;
+
     // Google Apps Script를 통해 Wiki 업데이트
     const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
-      content: wikiContent
+      content: shortSummary
     });
     
     if (result && result.success) {
