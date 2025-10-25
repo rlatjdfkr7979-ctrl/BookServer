@@ -286,6 +286,15 @@ class DoorayIntegration {
       return Promise.reject(new Error('Google Apps Script 백엔드 URL이 설정되지 않았습니다. 설정에서 URL을 입력해주세요.'));
     }
 
+    // content가 있고 길이가 긴 경우 POST 요청 시도
+    const content = additionalParams.content;
+    const isLongContent = content && content.length > 1000; // 1KB 이상의 콘텐츠
+    
+    if (isLongContent) {
+      console.log('📄 긴 콘텐츠 감지, POST 요청 시도:', content.length, '글자');
+      return this.makePostRequest(GAS_BACKEND_URL, action, additionalParams);
+    }
+
     return new Promise((resolve, reject) => {
       // JSONP 콜백 함수명 생성
       const callbackName = 'jsonp_callback_' + Date.now();
@@ -294,13 +303,14 @@ class DoorayIntegration {
       window[callbackName] = function(data) {
         console.log('✅ JSONP 콜백 성공:', {
           callbackName: callbackName,
-          data: data,
-          url: script.src
+          data: data
         });
         
         // 콜백 정리
         delete window[callbackName];
-        document.head.removeChild(script);
+        if (document.head.contains(script)) {
+          document.head.removeChild(script);
+        }
         
         if (data && data.error) {
           reject(new Error(data.error));
@@ -311,22 +321,41 @@ class DoorayIntegration {
       
       // 스크립트 태그로 JSONP 요청
       const script = document.createElement('script');
-      const params = new URLSearchParams({
-        action: action,
-        wikiId: this.config.wikiId,
-        pageId: this.config.pageId,
-        callback: callbackName,
-        ...additionalParams
+      
+      // URL 파라미터 안전하게 인코딩
+      const params = new URLSearchParams();
+      params.append('action', action);
+      params.append('wikiId', this.config.wikiId || '');
+      params.append('pageId', this.config.pageId || '');
+      params.append('callback', callbackName);
+      
+      // 추가 파라미터들을 안전하게 인코딩
+      Object.keys(additionalParams).forEach(key => {
+        if (additionalParams[key] !== undefined && additionalParams[key] !== null) {
+          const value = String(additionalParams[key]);
+          // 매우 긴 값은 잘라서 처리
+          const truncatedValue = value.length > 500 ? value.substring(0, 500) + '...[truncated]' : value;
+          params.append(key, truncatedValue);
+        }
       });
       
-      script.src = `${GAS_BACKEND_URL}?${params}`;
+      const fullUrl = `${GAS_BACKEND_URL}?${params}`;
+      
+      // URL 길이 체크
+      if (fullUrl.length > 2000) {
+        console.warn('⚠️ URL이 너무 깁니다. POST 요청으로 전환:', fullUrl.length);
+        resolve(this.makePostRequest(GAS_BACKEND_URL, action, additionalParams));
+        return;
+      }
+      
+      script.src = fullUrl;
       
       // 로딩 상태 로그
       console.log('🔄 JSONP 스크립트 로딩 시도:', {
-        url: script.src,
+        url: script.src.length > 200 ? script.src.substring(0, 200) + '...[truncated]' : script.src,
         callbackName: callbackName,
         action: action,
-        params: params
+        urlLength: script.src.length
       });
       
       script.onload = function() {
@@ -379,6 +408,123 @@ class DoorayIntegration {
         }
       }, 30000);
     });
+  }
+
+  // 📤 POST 요청으로 긴 콘텐츠 처리 (JSONP 대신 fetch 사용 - CORS 문제 있을 수 있음)
+  async makePostRequest(gasUrl, action, additionalParams) {
+    try {
+      console.log('📤 POST 요청 시도:', {
+        action: action,
+        contentLength: additionalParams.content ? additionalParams.content.length : 0
+      });
+
+      const requestData = {
+        action: action,
+        wikiId: this.config.wikiId || '',
+        pageId: this.config.pageId || '',
+        callback: 'jsonp_callback_' + Date.now(), // JSONP 콜백도 지원
+        ...additionalParams
+      };
+
+      const response = await fetch(gasUrl, {
+        method: 'POST',
+        mode: 'cors', // CORS 허용 시도
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ POST 요청 성공:', result);
+      return result;
+
+    } catch (fetchError) {
+      console.warn('⚠️ POST 요청 실패, GET으로 폴백:', fetchError.message);
+      
+      // POST 실패 시 콘텐츠를 줄여서 GET 요청으로 재시도
+      const shortContent = additionalParams.content ? 
+        this.shortenContent(additionalParams.content) : 
+        additionalParams.content;
+      
+      const fallbackParams = {
+        ...additionalParams,
+        content: shortContent
+      };
+
+      // 기존 GET 방식으로 재시도
+      return new Promise((resolve, reject) => {
+        const callbackName = 'jsonp_callback_' + Date.now();
+        
+        window[callbackName] = function(data) {
+          delete window[callbackName];
+          if (document.head.contains(script)) {
+            document.head.removeChild(script);
+          }
+          resolve(data);
+        };
+        
+        const script = document.createElement('script');
+        const params = new URLSearchParams({
+          action: action,
+          wikiId: this.config.wikiId || '',
+          pageId: this.config.pageId || '',
+          callback: callbackName,
+          ...fallbackParams
+        });
+        
+        script.src = `${gasUrl}?${params}`;
+        script.onerror = () => {
+          delete window[callbackName];
+          if (document.head.contains(script)) {
+            document.head.removeChild(script);
+          }
+          reject(new Error('GET 폴백도 실패했습니다.'));
+        };
+        
+        document.head.appendChild(script);
+      });
+    }
+  }
+
+  // 📄 콘텐츠 단축 함수
+  shortenContent(content) {
+    if (!content || content.length <= 500) {
+      return content;
+    }
+
+    // 마크다운 형태의 요약 생성
+    const lines = content.split('\n');
+    const title = lines.find(line => line.startsWith('# ')) || '# 📚 도서관리 현황';
+    
+    // 통계 정보 추출
+    const statsRegex = /- \*\*전체 도서\*\*: (\d+)권/;
+    const unreturnedRegex = /- \*\*미반납 도서\*\*: (\d+)권/;
+    const returnRateRegex = /- \*\*반납률\*\*: ([\d.]+)%/;
+    
+    const totalMatch = content.match(statsRegex);
+    const unreturnedMatch = content.match(unreturnedRegex);
+    const returnRateMatch = content.match(returnRateRegex);
+    
+    const currentDate = new Date().toLocaleString('ko-KR');
+    
+    return `${title}
+
+## 📊 요약 (${currentDate})
+- 전체 도서: ${totalMatch ? totalMatch[1] : '?'}권
+- 미반납 도서: ${unreturnedMatch ? unreturnedMatch[1] : '?'}권  
+- 반납률: ${returnRateMatch ? returnRateMatch[1] : '?'}%
+
+${unreturnedMatch && parseInt(unreturnedMatch[1]) === 0 ? 
+  '🎉 모든 도서가 반납되었습니다!' : 
+  `⚠️ ${unreturnedMatch ? unreturnedMatch[1] : '?'}권의 도서가 미반납 상태입니다.`}
+
+---
+*자동 생성된 요약 (원본 콘텐츠: ${content.length}자)*`;
   }
 
   // 📊 Wiki 업데이트 - 도서 현황을 실시간으로 Wiki에 반영
