@@ -1733,24 +1733,48 @@ async function syncLibraryToWiki() {
       }
     }
     
+    // 디버깅: 헤더 정보 출력
+    console.log('📋 테이블 헤더:', headers);
+    console.log('📊 상태 열 인덱스:', statusIndex, '대출자 열 인덱스:', borrowerIndex);
+    console.log('📚 총 데이터 행 수:', libraryData.length - 1);
+    
     // 미반납 도서 추출
     for (let i = 1; i < libraryData.length; i++) {
       const row = libraryData[i];
-      const status = statusIndex >= 0 ? (row[statusIndex] || '').toString() : '';
-      const borrower = borrowerIndex >= 0 ? (row[borrowerIndex] || '').toString() : '';
+      const status = statusIndex >= 0 ? (row[statusIndex] || '').toString().trim() : '';
+      const borrower = borrowerIndex >= 0 ? (row[borrowerIndex] || '').toString().trim() : '';
       
-      // 대출중이거나 연체인 경우, 또는 대출자가 있는 경우
-      if ((status.includes('대출') || status.includes('연체')) || 
-          (borrower && borrower.trim() !== '' && borrower !== '-')) {
+      // 디버깅: 각 행 데이터 확인
+      if (i <= 3) { // 처음 3개 행만 로그 출력
+        console.log(`📖 행 ${i}:`, {
+          title: row[2] || '제목없음',
+          status: status,
+          borrower: borrower,
+          fullRow: row
+        });
+      }
+      
+      // 더 강력한 미반납 조건 체크
+      const isUnreturned = 
+        status.includes('대출') || 
+        status.includes('연체') || 
+        status.includes('borrowed') ||
+        status.includes('overdue') ||
+        (borrower && borrower !== '' && borrower !== '-' && borrower !== '없음' && borrower !== 'N/A');
+      
+      if (isUnreturned) {
         unreturned.push({
           bookCode: row[1] || '',
           title: row[2] || '제목없음',
           author: row[3] || '저자미상',
-          borrower: borrower || '대출자미상',
-          status: status || '대출중'
+          borrower: borrower || '대출자정보없음',
+          status: status || '상태정보없음'
         });
       }
     }
+    
+    // 디버깅: 미반납 도서 개수 확인
+    console.log('🔍 발견된 미반납 도서:', unreturned.length, unreturned);
     
     // Wiki 콘텐츠 생성
     let wikiContent = `# 📚 도서관리 현황 (${currentDate} 업데이트)\n\n`;
