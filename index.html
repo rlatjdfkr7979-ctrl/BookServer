@@ -821,667 +821,56 @@ window.doorayIntegration = new DoorayIntegration();
 </script>
 
 <script>
-/* ====== 0) 환경 설정 ====== */
-const FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
-const ENTRY_IDS={code:"entry.32105598",title:"entry.1234176416",author:"entry.628826984",status:"entry.12641564",renter:"entry.615776096"};
+// Modularized library management script
+const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
+const ENTRY_IDS = {
+  code: "entry.32105598",
+  title: "entry.1234176416",
+  author: "entry.628826984",
+  status: "entry.12641564",
+  renter: "entry.615776096"
+};
 
-/* ====== 유틸 ====== */
-const norm=s=>String(s||'').replace(/\uFEFF/g,'').trim();
-const normHead=s=>norm(s).replace(/\s/g,'');
-const includesAny=(h,keys)=>keys.some(k=>normHead(h).includes(k));
-function findColIndex(header,candidates){return header.findIndex(h=>includesAny(h,candidates));}
+const Utils = (() => {
+  const norm = (value) => String(value || '').replace(/\uFEFF/g, '').trim();
+  const normHead = (value) => norm(value).replace(/\s/g, '');
+  const includesAny = (header, keywords) => keywords.some((keyword) => normHead(header).includes(keyword));
+  const findColIndex = (header, candidates) => header.findIndex((h) => includesAny(h, candidates));
+  const get = (id) => document.getElementById(id);
 
-/* ====== 페이지네이션 ====== */
-const ITEMS_PER_PAGE = 20; // 페이지당 항목 수
-let currentPage = {loanTable: 1, libraryTable: 1};
-let totalPages = {loanTable: 1, libraryTable: 1};
-let allTableData = {loanTable: [], libraryTable: []};
+  return { norm, normHead, includesAny, findColIndex, get };
+})();
 
-function createPagination(tableId, paginationId, totalItems) {
-  const pagination = document.getElementById(paginationId);
-  const pages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  totalPages[tableId] = pages;
-  
-  if (pages <= 1) {
-    pagination.innerHTML = '';
-    return;
-  }
-  
-  const current = currentPage[tableId];
-  let html = '';
-  
-  // 이전 버튼
-  html += `<button onclick="changePage('${tableId}', '${paginationId}', ${current - 1})" ${current === 1 ? 'disabled' : ''}>‹ 이전</button>`;
-  
-  // 페이지 번호들
-  let startPage = Math.max(1, current - 2);
-  let endPage = Math.min(pages, current + 2);
-  
-  if (startPage > 1) {
-    html += `<button onclick="changePage('${tableId}', '${paginationId}', 1)">1</button>`;
-    if (startPage > 2) html += '<span>...</span>';
-  }
-  
-  for (let i = startPage; i <= endPage; i++) {
-    html += `<button onclick="changePage('${tableId}', '${paginationId}', ${i})" ${i === current ? 'class="active"' : ''}>${i}</button>`;
-  }
-  
-  if (endPage < pages) {
-    if (endPage < pages - 1) html += '<span>...</span>';
-    html += `<button onclick="changePage('${tableId}', '${paginationId}', ${pages})">${pages}</button>`;
-  }
-  
-  // 다음 버튼
-  html += `<button onclick="changePage('${tableId}', '${paginationId}', ${current + 1})" ${current === pages ? 'disabled' : ''}>다음 ›</button>`;
-  
-  // 페이지 정보
-  html += `<span class="page-info">${current} / ${pages} 페이지 (총 ${totalItems}개)</span>`;
-  
-  pagination.innerHTML = html;
-}
+const AppState = {
+  itemsPerPage: 20,
+  currentPage: { loanTable: 1, libraryTable: 1 },
+  totalPages: { loanTable: 1, libraryTable: 1 },
+  baseData: { loanTable: [], libraryTable: [] },
+  viewData: { loanTable: [], libraryTable: [] },
+  withQR: { loanTable: false, libraryTable: false },
+  sortState: {},
+  sortedColumn: { loanTable: null, libraryTable: null },
+  filters: { borrowed: false, newest: false, recent: false }
+};
 
-function changePage(tableId, paginationId, page) {
-  const pages = totalPages[tableId];
-  if (page < 1 || page > pages) return;
-  
-  currentPage[tableId] = page;
-  renderTableWithPagination(allTableData[tableId], tableId, tableId === 'libraryTable');
-  createPagination(tableId, paginationId, allTableData[tableId].length - 1); // 헤더 제외
-  
-  // 테이블 스크롤을 맨 위로 이동
-  const tableWrap = document.querySelector(`#${tableId === 'loanTable' ? 'loanSection' : 'librarySection'} .table-wrap`);
-  if (tableWrap) tableWrap.scrollTop = 0;
-}
-
-/* ====== CSV 로드 ====== */
-async function loadCSV(file){
-  const res=await fetch(file+'?v='+Date.now());
-  if(!res.ok) throw new Error(file+' 로드 실패');
-  const text=await res.text();
-  return Papa.parse(text.trim(),{skipEmptyLines:true}).data;
-}
-
-/* ====== QR 생성 ====== */
-function generateQR({code,title,author,renter,status}){
-  // 상태에 따른 라디오박스 선택 로직 개선
-  let statusEncoded = "";
-  if(status.includes('반납')){
-    statusEncoded = "%EB%B0%98%EB%82%A9"; // 반납
-  } else if(status.includes('대출') || status.includes('대여') || status.includes('연체')){
-    statusEncoded = "%EB%8C%80%EC%B6%9C"; // 대출 (연체 포함)
-  }
-  
-  const url=`${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
-  const layer=document.createElement('div');
-  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
-  layer.innerHTML=`<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
-  document.body.appendChild(layer);
-  new QRCode(layer.querySelector('#qrbox'),{text:url,width:220,height:220,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.H});
-  layer.querySelector('#qrClose').onclick=()=>layer.remove();
-  layer.querySelector('#qrDown').onclick=()=>{const img=layer.querySelector('#qrbox img');const a=document.createElement('a');a.href=img.src;a.download=`${code}.png`;a.click();};
-}
-
-/* ====== 표 렌더링 ====== */
-function renderTable(rows,id,withQR=false){
-  // 전체 데이터 저장
-  allTableData[id] = [...rows];
-  renderTableWithPagination(rows, id, withQR);
-  
-  // 페이지네이션 생성
-  const paginationId = id === 'loanTable' ? 'loanPagination' : 'libraryPagination';
-  createPagination(id, paginationId, rows.length - 1); // 헤더 제외
-}
-
-function renderTableWithPagination(rows,id,withQR=false){
-  const header=rows[0];
-  const table=document.getElementById(id);
-  const finalHeader=withQR?[...header,'QR 생성']:header;
-  
-  // 현재 페이지의 데이터 계산
-  const page = currentPage[id];
-  const startIdx = (page - 1) * ITEMS_PER_PAGE + 1; // 헤더 제외하고 시작
-  const endIdx = Math.min(startIdx + ITEMS_PER_PAGE - 1, rows.length - 1);
-  
-  // 헤더 생성 (정렬 기능 포함)
-  const headerRow=document.createElement('tr');
-  finalHeader.forEach((h,idx)=>{
-    const th=document.createElement('th');
-    th.textContent=h;
-    
-    // QR 생성 열이 아닌 경우에만 정렬 기능 추가
-    if(idx<header.length){
-      th.style.cursor='pointer';
-      th.style.userSelect='none';
-      th.onclick=()=>sortTable(rows,id,idx,withQR);
-      
-      // 정렬 표시를 위한 스타일
-      th.addEventListener('mouseenter',()=>{
-        if(!th.textContent.includes('↑')&&!th.textContent.includes('↓')){
-          th.style.background='#e2e8f0';
-        }
-      });
-      th.addEventListener('mouseleave',()=>{
-        if(!th.textContent.includes('↑')&&!th.textContent.includes('↓')){
-          th.style.background='#f1f5f9';
-        }
-      });
+const CSVService = {
+  async load(file) {
+    const response = await fetch(`${file}?v=${Date.now()}`);
+    if (!response.ok) {
+      throw new Error(`${file} 로드 실패`);
     }
-    headerRow.appendChild(th);
-  });
-  
-  table.innerHTML='';
-  table.appendChild(headerRow);
-  
-  // 현재 페이지의 행들만 렌더링
-  for(let i=startIdx;i<=endIdx;i++){
-    if (i >= rows.length) break;
-    
-    const tr=document.createElement('tr');
-    tr.innerHTML=rows[i].map((c,j)=>`<td>${c}</td>`).join('');
-    
-    // 제목 클릭 시 이력 보기
-    if(withQR){
-      const titleIdx=findColIndex(header,['제목','도서명']);
-      const codeIdx=findColIndex(header,['코드','코드번호']);
-      const statusIdx=findColIndex(header,['상태','대출여부']);
-      
-      // 상태에 따른 행 색상 적용
-      const rowStatus = rows[i][statusIdx] || '';
-      const statusInfo = rows[i]._statusInfo;
-      
-      if(statusInfo && statusInfo.className) {
-        tr.classList.add(statusInfo.className);
-      } else {
-        // 기존 방식으로 fallback
-        if(rowStatus.includes('연체')){
-          tr.classList.add('overdue');
-        } else if(rowStatus.includes('대출') || rowStatus.includes('대여')){
-          tr.classList.add('borrowed');
-        }
-      }
-      
-      const tdTitle=tr.children[titleIdx];
-      if(tdTitle){
-        tdTitle.style.color='#2563eb';
-        tdTitle.style.cursor='pointer';
-        tdTitle.style.fontWeight='500';
-        tdTitle.title='클릭하면 도서 상세정보를 확인할 수 있습니다';
-        const authorIdx = findColIndex(header,['지은이','저자']);
-        const authorText = authorIdx !== -1 ? rows[i][authorIdx] : '';
-        tdTitle.onclick=()=>showBookPreview(norm(rows[i][codeIdx]),norm(rows[i][titleIdx]),norm(authorText));
-      }
-      const tdQR=document.createElement('td');
-      const code=rows[i][codeIdx];
-      const author=rows[i][findColIndex(header,['지은이','저자'])];
-      const renter=rows[i][findColIndex(header,['대출자','대여자'])];
-      const status=rows[i][findColIndex(header,['상태','대출여부'])];
-      const btn=document.createElement('button');
-      btn.className='qr-btn';btn.textContent='📷 QR';
-      btn.onclick=()=>generateQR({code,title:rows[i][titleIdx],author,renter,status});
-      tdQR.appendChild(btn);tr.appendChild(tdQR);
+
+    const text = await response.text();
+    return Papa.parse(text.trim(), { skipEmptyLines: true }).data;
+  }
+};
+
+const Toast = (() => {
+  function ensureStyle() {
+    if (document.getElementById('toast-style')) {
+      return;
     }
-    table.appendChild(tr);
-  }
-}
 
-/* ====== 테이블 정렬 ====== */
-let sortState={}; // 각 테이블의 정렬 상태 저장
-function sortTable(originalRows,tableId,colIdx,withQR=false){
-  const header=originalRows[0];
-  
-  // 정렬 상태 확인 (기본: 오름차순)
-  const sortKey=`${tableId}_${colIdx}`;
-  const isAsc=!sortState[sortKey]; // 현재 상태의 반대로 설정
-  sortState[sortKey]=isAsc;
-  
-  // 전체 데이터를 정렬 (헤더 제외)
-  const dataRows = allTableData[tableId].slice(1);
-  dataRows.sort((a,b)=>{
-    const aVal=a[colIdx]||'';
-    const bVal=b[colIdx]||'';
-    
-    // 숫자인지 확인
-    const aNum=parseFloat(String(aVal).replace(/[^\d.-]/g,''));
-    const bNum=parseFloat(String(bVal).replace(/[^\d.-]/g,''));
-    
-    let result;
-    if(!isNaN(aNum)&&!isNaN(bNum)){
-      result=aNum-bNum; // 숫자 정렬
-    }else{
-      result=String(aVal).localeCompare(String(bVal),'ko',{numeric:true}); // 문자열 정렬 (한국어 지원)
-    }
-    
-    return isAsc?result:-result;
-  });
-  
-  // 정렬된 데이터로 테이블 업데이트
-  const sortedData = [header, ...dataRows];
-  allTableData[tableId] = sortedData;
-  
-  // 첫 페이지로 이동하고 재렌더링
-  currentPage[tableId] = 1;
-  renderTableWithPagination(sortedData, tableId, withQR);
-  
-  // 페이지네이션 업데이트
-  const paginationId = tableId === 'loanTable' ? 'loanPagination' : 'libraryPagination';
-  createPagination(tableId, paginationId, sortedData.length - 1);
-  
-  // 헤더에 정렬 표시 추가
-  const table = document.getElementById(tableId);
-  table.querySelectorAll('th').forEach(th=>{
-    th.textContent=th.textContent.replace(/\s*[↑↓]\s*/g,'');
-    th.style.background='#f1f5f9';
-  });
-  
-  const currentTh=table.querySelectorAll('th')[colIdx];
-  currentTh.textContent+=isAsc?' ↑':' ↓';
-  currentTh.style.background='#dbeafe';
-  
-  // 정렬 후 행 색상 다시 적용 (도서목록의 경우)
-  if(withQR){
-    const statusIdx=findColIndex(header,['상태','대출여부']);
-    const allRows = table.querySelectorAll('tr');
-    const currentData = allTableData[tableId];
-    
-    for(let rowIdx = 1; rowIdx < allRows.length; rowIdx++){
-      const tr = allRows[rowIdx];
-      tr.classList.remove('borrowed', 'overdue');
-      
-      // 현재 페이지의 데이터 인덱스 계산
-      const page = currentPage[tableId];
-      const startIdx = (page - 1) * ITEMS_PER_PAGE + 1;
-      const dataIndex = startIdx + rowIdx - 1;
-      
-      if(dataIndex < currentData.length && currentData[dataIndex]._statusInfo) {
-        const statusInfo = currentData[dataIndex]._statusInfo;
-        if(statusInfo.className) {
-          tr.classList.add(statusInfo.className);
-        }
-      } else {
-        // 기존 방식으로 fallback
-        const statusCell = tr.cells[statusIdx];
-        if(statusCell){
-          const statusText = statusCell.textContent || '';
-          if(statusText.includes('연체')){
-            tr.classList.add('overdue');
-          } else if(statusText.includes('대출') || statusText.includes('대여')){
-            tr.classList.add('borrowed');
-          }
-        }
-      }
-    }
-  }
-}
-
-/* ====== 검색 ====== */
-function addSearch(inputId,tableId){
-  const input=document.getElementById(inputId);
-  let timer;
-  input.addEventListener('input',e=>{
-    clearTimeout(timer);
-    timer=setTimeout(()=>{
-      const val=e.target.value.trim();
-      if (!val) {
-        // 검색어가 없으면 원본 데이터로 복원
-        currentPage[tableId] = 1;
-        renderTable(allTableData[tableId], tableId, tableId === 'libraryTable');
-        return;
-      }
-      
-      // 검색 결과 필터링
-      const originalData = allTableData[tableId];
-      const filteredData = [originalData[0]]; // 헤더 보존
-      
-      for(let i = 1; i < originalData.length; i++) {
-        const rowText = originalData[i].join(' ');
-        if (rowText.includes(val)) {
-          filteredData.push(originalData[i]);
-        }
-      }
-      
-      // 검색 결과로 테이블 재렌더링
-      currentPage[tableId] = 1;
-      renderTable(filteredData, tableId, tableId === 'libraryTable');
-    },150);
-  });
-}
-
-/* ====== 연체 판별 ====== */
-function isOverdue(dateStr,status){
-  if(!dateStr||status.includes('반납'))return false;
-  const d=new Date(dateStr);
-  if(isNaN(d))return false;
-  const diff=(Date.now()-d.getTime())/(1000*60*60*24);
-  return diff>14;
-}
-
-/* ====== 대출 상태 및 남은 일수 계산 ====== */
-function calculateLoanStatus(dateStr, status) {
-  if (!dateStr || status.includes('반납')) {
-    return { status: '반납', displayText: '반납', className: '' };
-  }
-  
-  const loanDate = new Date(dateStr);
-  if (isNaN(loanDate)) {
-    return { status: status, displayText: status, className: '' };
-  }
-  
-  const now = new Date();
-  const diffInDays = Math.floor((now.getTime() - loanDate.getTime()) / (1000 * 60 * 60 * 24));
-  const loanPeriod = 14; // 대출 기간 14일
-  const remainingDays = loanPeriod - diffInDays;
-  
-  if (remainingDays > 0) {
-    // 대출 중 - 남은 일수 표시
-    return {
-      status: '대출',
-      displayText: `대출 (${remainingDays}일 남음)`,
-      className: 'borrowed',
-      remainingDays: remainingDays
-    };
-  } else if (remainingDays === 0) {
-    // 반납 당일
-    return {
-      status: '대출',
-      displayText: `대출 (오늘 반납)`,
-      className: 'borrowed',
-      remainingDays: 0
-    };
-  } else {
-    // 연체 - 초과 일수 표시
-    const overdueDays = Math.abs(remainingDays);
-    return {
-      status: '연체',
-      displayText: `연체 (${overdueDays}일 초과)`,
-      className: 'overdue',
-      overdueDays: overdueDays
-    };
-  }
-}
-
-/* ====== 도서 미리보기 (구글 Books API) ====== */
-async function showBookPreview(code, title, author = '') {
-  const modal = document.getElementById('bookPreviewModal');
-  const previewContent = document.getElementById('bookPreviewContent');
-  const historyContent = document.getElementById('bookHistoryContent');
-  
-  // 모달 표시
-  modal.style.display = 'flex';
-  
-  // 탭 초기화 (도서 정보 탭을 기본으로)
-  switchTab('preview');
-  
-  // 로딩 상태
-  previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
-  
-  try {
-    // 구글 Books API 호출
-    const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
-    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${searchQuery}&maxResults=5&langRestrict=ko`;
-    
-    const response = await fetch(apiUrl);
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      // 가장 적합한 책 찾기 (제목 유사도 기준)
-      const bestMatch = findBestBookMatch(data.items, title);
-      renderBookInfo(bestMatch, previewContent);
-    } else {
-      // API에서 결과가 없을 때 기본 정보 표시
-      renderBasicBookInfo(title, author, code, previewContent);
-    }
-    
-    // 이력 정보도 함께 준비
-    renderBookHistory(code, title, historyContent);
-    
-  } catch (error) {
-    console.error('도서 정보 로드 실패:', error);
-    renderBasicBookInfo(title, author, code, previewContent);
-    renderBookHistory(code, title, historyContent);
-  }
-  
-  // 팝업 외부 클릭 시 닫기 기능
-  modal.onclick = (e) => {
-    if (e.target === modal) {
-      closeBookPreview();
-    }
-  };
-  
-  // 팝업 내부 클릭 시 이벤트 버블링 방지
-  modal.querySelector('.inner').onclick = (e) => {
-    e.stopPropagation();
-  };
-}
-
-function findBestBookMatch(items, targetTitle) {
-  // 제목 유사도로 가장 적합한 책 찾기
-  let bestMatch = items[0];
-  let bestScore = 0;
-  
-  for (const item of items) {
-    const bookTitle = item.volumeInfo.title || '';
-    const score = calculateSimilarity(targetTitle.toLowerCase(), bookTitle.toLowerCase());
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = item;
-    }
-  }
-  
-  return bestMatch;
-}
-
-function calculateSimilarity(str1, str2) {
-  // 간단한 유사도 계산 (공통 단어 개수 기준)
-  const words1 = str1.split(/\s+/);
-  const words2 = str2.split(/\s+/);
-  let commonWords = 0;
-  
-  for (const word of words1) {
-    if (word.length > 1 && words2.some(w => w.includes(word) || word.includes(w))) {
-      commonWords++;
-    }
-  }
-  
-  return commonWords / Math.max(words1.length, words2.length);
-}
-
-function renderBookInfo(bookData, container) {
-  const info = bookData.volumeInfo;
-  const saleInfo = bookData.saleInfo || {};
-  
-  const title = info.title || '제목 없음';
-  const authors = info.authors ? info.authors.join(', ') : '저자 미상';
-  const publisher = info.publisher || '출판사 미상';
-  const publishedDate = info.publishedDate || '출간일 미상';
-  const description = info.description || '설명이 없습니다.';
-  const thumbnail = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
-  const pageCount = info.pageCount || '-';
-  const categories = info.categories ? info.categories.join(', ') : '-';
-  const language = info.language === 'ko' ? '한국어' : info.language || '-';
-  const rating = info.averageRating || 0;
-  const ratingsCount = info.ratingsCount || 0;
-  
-  container.innerHTML = `
-    <div class="book-header">
-      <div class="book-cover">
-        ${thumbnail ? `<img src="${thumbnail.replace('http:', 'https:')}" alt="책 표지" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjE2MCIgdmlld0JveD0iMCAwIDEyMCAxNjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iMTYwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik00MCA2MEg4MFY2NEg0MFY2MFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+'}alt="책 표지"'>` : '<div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>'}
-      </div>
-      <div class="book-info">
-        <h2 class="book-title">${title}</h2>
-        <p class="book-author">👤 ${authors}</p>
-        <p class="book-publisher">🏢 ${publisher}</p>
-        ${rating > 0 ? `
-          <div class="book-rating">
-            <span class="stars">${'★'.repeat(Math.floor(rating))}${'☆'.repeat(5-Math.floor(rating))}</span>
-            <span style="color:#6b7280;font-size:13px;">${rating}/5.0 (${ratingsCount}명)</span>
-          </div>
-        ` : ''}
-      </div>
-    </div>
-    
-    <div class="book-meta">
-      <div class="meta-item">
-        <span class="meta-label">📅 출간일</span>
-        <span class="meta-value">${publishedDate}</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">📄 페이지</span>
-        <span class="meta-value">${pageCount}페이지</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">🏷️ 분야</span>
-        <span class="meta-value">${categories}</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">🌐 언어</span>
-        <span class="meta-value">${language}</span>
-      </div>
-    </div>
-    
-    <div class="book-description">
-      <strong>📝 도서 소개</strong><br><br>
-      ${description.length > 500 ? description.substring(0, 500) + '...' : description}
-    </div>
-  `;
-}
-
-function renderBasicBookInfo(title, author, code, container) {
-  container.innerHTML = `
-    <div class="book-header">
-      <div class="book-cover">
-        <div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>
-      </div>
-      <div class="book-info">
-        <h2 class="book-title">${title}</h2>
-        ${author ? `<p class="book-author">👤 ${author}</p>` : ''}
-        <p style="color:#6b7280;font-size:14px;">📚 코드: ${code}</p>
-      </div>
-    </div>
-    
-    <div class="book-description" style="text-align:center;color:#6b7280;padding:40px;">
-      상세한 도서 정보를 찾을 수 없습니다.<br>
-      도서관 내부 정보만 표시됩니다.
-    </div>
-  `;
-}
-
-function renderBookHistory(code, title, container) {
-  const recs = window.booksData.filter(r => norm(r[1]) === code);
-  
-  if (recs.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">대출 이력이 없습니다.</div>';
-  } else {
-    container.innerHTML = `
-      <h4 style="margin:0 0 16px 0;color:#1f2937;">📋 대출 이력 (총 ${recs.length}건)</h4>
-      <table style="width:100%;border-collapse:collapse;">
-        <tr style="background:#f8fafc;">
-          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">등록일</th>
-          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">대여자</th>
-          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">상태</th>
-        </tr>
-        ${recs.map(r => {
-          // 각 이력에 대해서도 상세 상태 계산
-          const loanStatus = calculateLoanStatus(r[0], r[5]);
-          const displayStatus = loanStatus.displayText || r[5];
-          const bgColor = loanStatus.status === '연체' ? 'background:#fee2e2;color:#dc2626;' :
-                         loanStatus.status === '대출' ? 'background:#fef3c7;color:#92400e;' :
-                         'background:#d1fae5;color:#047857;';
-          
-          return `
-            <tr>
-              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[0]}</td>
-              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[4]}</td>
-              <td style="padding:10px 12px;border:1px solid #e2e8f0;">
-                <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;${bgColor}">
-                  ${displayStatus}
-                </span>
-              </td>
-            </tr>
-          `;
-        }).join('')}
-      </table>
-    `;
-  }
-}
-
-function switchTab(tabName) {
-  // 탭 버튼 상태 변경
-  document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-  
-  // 선택된 탭 활성화
-  if (tabName === 'preview') {
-    document.querySelector('.tab-button').classList.add('active');
-    document.getElementById('previewTab').classList.add('active');
-  } else {
-    document.querySelectorAll('.tab-button')[1].classList.add('active');
-    document.getElementById('historyTab').classList.add('active');
-  }
-}
-
-function closeBookPreview() {
-  const modal = document.getElementById('bookPreviewModal');
-  modal.style.display = 'none';
-  modal.onclick = null;
-}
-
-/* ====== 기존 도서 이력 팝업 (호환성 유지) ====== */
-function showHistory(code,title){
-  const modal=document.getElementById('historyModal');
-  const histTitle=document.getElementById('histTitle');
-  const histContent=document.getElementById('histContent');
-  histTitle.textContent=`📖 ${title} (${code})`;
-  const recs=window.booksData.filter(r=>norm(r[1])===code);
-  if(recs.length===0){histContent.innerHTML='<p>이력 없음</p>';}
-  else{
-    histContent.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th>등록일</th><th>대여자</th><th>상태</th></tr>'+recs.map(r=>`<tr><td>${r[0]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`).join('')+'</table>';
-  }
-  modal.style.display='flex';
-  
-  // 팝업 외부 클릭 시 닫기 기능
-  modal.onclick=(e)=>{
-    if(e.target===modal){
-      closeHistory();
-    }
-  };
-  
-  // 팝업 내부 클릭 시 이벤트 버블링 방지
-  modal.querySelector('.inner').onclick=(e)=>{
-    e.stopPropagation();
-  };
-}
-function closeHistory(){
-  const modal=document.getElementById('historyModal');
-  modal.style.display='none';
-  modal.onclick=null; // 이벤트 리스너 제거
-}
-
-/* ====== 토스트 알림 ====== */
-function showToast(message, duration = 3000) {
-  // 기존 토스트가 있으면 제거
-  const existingToast = document.getElementById('toast-notification');
-  if (existingToast) existingToast.remove();
-  
-  // 토스트 생성
-  const toast = document.createElement('div');
-  toast.id = 'toast-notification';
-  toast.style = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #10b981;
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    z-index: 10000;
-    font-size: 14px;
-    max-width: 300px;
-    animation: slideIn 0.3s ease-out;
-  `;
-  
-  // 애니메이션 CSS 추가
-  if (!document.getElementById('toast-style')) {
     const style = document.createElement('style');
     style.id = 'toast-style';
     style.textContent = `
@@ -1496,954 +885,1367 @@ function showToast(message, duration = 3000) {
     `;
     document.head.appendChild(style);
   }
-  
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  // 자동 제거
-  setTimeout(() => {
-    toast.style.animation = 'slideOut 0.3s ease-in';
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
-}
 
-/* ====== 메인 실행 ====== */
-// 🔄 페이지 로드 시 Dooray 연동 상태 확인 및 버튼 업데이트
-function updateDoorayButtonStatus() {
-  const btn = document.getElementById('btnDooraySync');
-  const hasConfig = window.DOORAY_CONFIG.token && window.DOORAY_CONFIG.projectId && window.DOORAY_CONFIG.postId;
-  
-  if (hasConfig) {
-    btn.innerHTML = '✅ Dooray 연동됨';
-    btn.style.background = '#10b981'; // 초록색
-    btn.title = 'Dooray 연동이 활성화되어 자동 알림이 작동합니다';
-  } else {
-    btn.innerHTML = '🔄 Dooray 연동';
-    btn.style.background = '#7c3aed'; // 보라색
-    btn.title = 'Dooray API 설정이 필요합니다';
-  }
-}
+  function show(message, duration = 3000) {
+    ensureStyle();
 
-Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library])=>{
-  window.booksData=books; // 이력 팝업용 저장
-  renderTable(books,'loanTable');
-  
-  // Dooray 버튼 상태 업데이트
-  updateDoorayButtonStatus();
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(37, 99, 235, 0.95);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+      z-index: 10000;
+      font-size: 14px;
+      max-width: 320px;
+      animation: slideIn 0.25s ease-out;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
 
-  const bh=books[0].map(norm);
-  const bDateIdx=findColIndex(bh,['등록일','대출일','일자']);
-  const bCodeIdx=findColIndex(bh,['코드','코드번호']);
-  const bStatusIdx=findColIndex(bh,['상태','대출여부']);
-  const bUserIdx=findColIndex(bh,['대여자','대출자']);
-  const latestByCode={};
-
-  for(let i=1;i<books.length;i++){
-    const date=norm(books[i][bDateIdx]);
-    const code=norm(books[i][bCodeIdx]);
-    const status=norm(books[i][bStatusIdx]);
-    const borrower=norm(books[i][bUserIdx]);
-    if(!code)continue;
-    if(!latestByCode[code])latestByCode[code]={status:'',borrower:'',lastReturn:''};
-    if(status.includes('반납'))latestByCode[code].lastReturn=date;
-    latestByCode[code].status=status;
-    latestByCode[code].borrower=borrower;
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.25s ease-in forwards';
+      setTimeout(() => toast.remove(), 250);
+    }, duration);
   }
 
-  const lh=library[0].map(norm);
-  const lCodeIdx=findColIndex(lh,['코드','코드번호']);
-  let lStatusIdx=findColIndex(lh,['상태','대출여부']);
-  let lUserIdx=findColIndex(lh,['대여자','대출자']);
-  if(lStatusIdx===-1){library[0].push('대출여부');lStatusIdx=library[0].length-1;}
-  if(lUserIdx===-1){library[0].push('대출자');lUserIdx=library[0].length-1;}
+  return { show };
+})();
 
-  for(let i=1;i<library.length;i++){
-    const code=norm(library[i][lCodeIdx]);
-    const rec=latestByCode[code];
-    if(!rec){library[i][lStatusIdx]='';library[i][lUserIdx]='';continue;}
-    if(rec.status.includes('반납')){
-      library[i][lStatusIdx]='반납';
-      library[i][lUserIdx]='';
-    }else{
-      library[i][lUserIdx]=rec.borrower||'';
-      // ✅ 상세한 대출 상태 계산 (남은 일수/초과 일수 포함)
-      const loanRow=books.find(b=>norm(b[bCodeIdx])===code && !b[bStatusIdx].includes('반납'));
-      const loanDate=loanRow?loanRow[bDateIdx]:'';
-      const loanStatus = calculateLoanStatus(loanDate, rec.status);
-      library[i][lStatusIdx] = loanStatus.displayText;
-      
-      // 상태 정보를 데이터에 저장 (나중에 색상 적용용)
-      library[i]._statusInfo = loanStatus;
+const LoanStatus = (() => {
+  function isOverdue(dateStr, status) {
+    if (!dateStr || status.includes('반납')) {
+      return false;
     }
+
+    const date = new Date(dateStr);
+    if (isNaN(date)) {
+      return false;
+    }
+
+    const diff = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    return diff > 14;
   }
 
-  renderTable(library,'libraryTable',true);
-  addSearch('searchLoans','loanTable');
-  addSearch('searchLibrary','libraryTable');
+  function calculate(dateStr, status) {
+    if (!dateStr || status.includes('반납')) {
+      return { status: '반납', displayText: '반납', className: '' };
+    }
 
-  // ✅ 대출 중 필터
-  const btnBorrowed=document.getElementById('btnBorrowed');
-  let borrowedOn=false;
-  btnBorrowed.onclick=()=>{
-    // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
-    if(!document.getElementById('librarySection').classList.contains('hidden')==false){
-      document.getElementById('librarySection').classList.remove('hidden');
-      document.getElementById('loanSection').classList.add('hidden');
-      document.getElementById('btnLibrary').classList.add('active');
-      document.getElementById('btnLoans').classList.remove('active');
+    const loanDate = new Date(dateStr);
+    if (isNaN(loanDate)) {
+      return { status, displayText: status, className: '' };
     }
-    
-    borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
-    
-    // 모든 필터 재적용
-    applyAllFilters();
-    
-    // 페이지와 테이블 스크롤을 맨 위로 이동
-    window.scrollTo(0,0);
-    document.querySelector('#librarySection .table-wrap').scrollTop=0;
-  };
 
-  // ✅ 최신 도서 순 필터 (library.csv 데이터 역순 출력)
-  const btnNewest=document.getElementById('btnNewest');
-  let newestOn=false;
-  let originalLibraryData=[...library]; // 원본 데이터 보존
-  btnNewest.onclick=()=>{
-    // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
-    if(!document.getElementById('librarySection').classList.contains('hidden')==false){
-      document.getElementById('librarySection').classList.remove('hidden');
-      document.getElementById('loanSection').classList.add('hidden');
-      document.getElementById('btnLibrary').classList.add('active');
-      document.getElementById('btnLoans').classList.remove('active');
+    const now = new Date();
+    const diffInDays = Math.floor((now.getTime() - loanDate.getTime()) / (1000 * 60 * 60 * 24));
+    const remainingDays = 14 - diffInDays;
+
+    if (remainingDays > 0) {
+      return {
+        status: '대출',
+        displayText: `대출 (${remainingDays}일 남음)`,
+        className: 'borrowed',
+        remainingDays
+      };
     }
-    
-    newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
-    
-    // 버튼 텍스트 변경
-    if(newestOn){
-      btnNewest.innerHTML='📉 오래된 순으로 보기';
-    }else{
-      btnNewest.innerHTML='📈 최신 도서 순으로 보기';
+
+    if (remainingDays === 0) {
+      return {
+        status: '대출',
+        displayText: '대출 (오늘 반납)',
+        className: 'borrowed',
+        remainingDays: 0
+      };
     }
-    
-    // 현재 표시된 행들을 수집 (필터링된 상태 고려)
-    const currentRows=[];
-    const trs=document.querySelectorAll('#libraryTable tr');
-    
-    // 헤더 추가
-    currentRows.push(library[0]);
-    
-    // 현재 보이는 데이터 행들만 수집
-    for(let i=1;i<trs.length;i++){
-      if(trs[i].style.display!=='none'){
-        const rowData=[];
-        for(let j=0;j<trs[i].cells.length-1;j++){ // QR 컬럼 제외
-          rowData.push(trs[i].cells[j].textContent);
+
+    const overdueDays = Math.abs(remainingDays);
+    return {
+      status: '연체',
+      displayText: `연체 (${overdueDays}일 초과)`,
+      className: 'overdue',
+      overdueDays
+    };
+  }
+
+  return { isOverdue, calculate };
+})();
+
+const QRManager = (() => {
+  function buildFormUrl({ code, title, author, renter, status }) {
+    let statusEncoded = '';
+    if (status.includes('반납')) {
+      statusEncoded = '%EB%B0%98%EB%82%A9';
+    } else if (/(대출|대여|연체)/.test(status)) {
+      statusEncoded = '%EB%8C%80%EC%B6%9C';
+    }
+
+    return `${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
+  }
+
+  function generate({ code, title, author, renter, status }) {
+    const url = buildFormUrl({ code, title, author, renter, status });
+    const layer = document.createElement('div');
+    layer.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;';
+    layer.innerHTML = `
+      <div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px">
+        <h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3>
+        <div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div>
+        <p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p>
+        <div style="margin-top:10px">
+          <button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button>
+          <button id="qrDown" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(layer);
+    new QRCode(layer.querySelector('#qrbox'), {
+      text: url,
+      width: 220,
+      height: 220,
+      colorDark: '#000',
+      colorLight: '#fff',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+
+    layer.querySelector('#qrClose').onclick = () => layer.remove();
+    layer.querySelector('#qrDown').onclick = () => {
+      const img = layer.querySelector('#qrbox img');
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = `${code}.png`;
+      a.click();
+    };
+
+    DoorayUI.notifyBookEvent({ code, title, author, borrower: renter, status });
+  }
+
+  return { generate };
+})();
+
+const TableManager = (() => {
+  function render(rows, tableId, withQR = false, options = {}) {
+    const { preserveBase = false } = options;
+    AppState.withQR[tableId] = withQR;
+
+    if (!preserveBase) {
+      AppState.baseData[tableId] = [...rows];
+    }
+
+    AppState.viewData[tableId] = [...rows];
+    AppState.currentPage[tableId] = 1;
+    renderPage(tableId);
+    renderPagination(tableId);
+    window.allTableData = AppState.baseData;
+  }
+
+  function renderPagination(tableId) {
+    const paginationId = tableId === 'loanTable' ? 'loanPagination' : 'libraryPagination';
+    const container = Utils.get(paginationId);
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = '';
+    const totalItems = Math.max(AppState.viewData[tableId].length - 1, 0);
+    const pages = Math.ceil(totalItems / AppState.itemsPerPage);
+    AppState.totalPages[tableId] = pages;
+
+    if (pages <= 1) {
+      return;
+    }
+
+    const current = AppState.currentPage[tableId];
+    const createButton = (label, page, { disabled = false, active = false } = {}) => {
+      const button = document.createElement('button');
+      button.textContent = label;
+      if (disabled) button.disabled = true;
+      if (active) button.classList.add('active');
+      button.addEventListener('click', () => changePage(tableId, page));
+      return button;
+    };
+
+    container.appendChild(createButton('‹ 이전', current - 1, { disabled: current === 1 }));
+
+    let startPage = Math.max(1, current - 2);
+    let endPage = Math.min(pages, current + 2);
+
+    if (startPage > 1) {
+      container.appendChild(createButton('1', 1));
+      if (startPage > 2) {
+        const ellipsis = document.createElement('span');
+        ellipsis.textContent = '...';
+        container.appendChild(ellipsis);
+      }
+    }
+
+    for (let page = startPage; page <= endPage; page++) {
+      container.appendChild(createButton(String(page), page, { active: page === current }));
+    }
+
+    if (endPage < pages) {
+      if (endPage < pages - 1) {
+        const ellipsis = document.createElement('span');
+        ellipsis.textContent = '...';
+        container.appendChild(ellipsis);
+      }
+      container.appendChild(createButton(String(pages), pages));
+    }
+
+    container.appendChild(createButton('다음 ›', current + 1, { disabled: current === pages }));
+
+    const info = document.createElement('span');
+    info.className = 'page-info';
+    info.textContent = `${current} / ${pages} 페이지 (총 ${totalItems}개)`;
+    container.appendChild(info);
+  }
+
+  function changePage(tableId, page) {
+    const pages = AppState.totalPages[tableId];
+    if (page < 1 || page > pages) {
+      return;
+    }
+
+    AppState.currentPage[tableId] = page;
+    renderPage(tableId);
+    renderPagination(tableId);
+
+    const sectionId = tableId === 'loanTable' ? 'loanSection' : 'librarySection';
+    const tableWrap = document.querySelector(`#${sectionId} .table-wrap`);
+    if (tableWrap) {
+      tableWrap.scrollTop = 0;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function renderPage(tableId) {
+    const rows = AppState.viewData[tableId];
+    if (!rows.length) {
+      return;
+    }
+
+    const table = Utils.get(tableId);
+    if (!table) {
+      return;
+    }
+
+    const header = rows[0];
+    const withQR = AppState.withQR[tableId];
+    const finalHeader = withQR ? [...header, 'QR 생성'] : [...header];
+    const startIdx = (AppState.currentPage[tableId] - 1) * AppState.itemsPerPage + 1;
+    const endIdx = Math.min(startIdx + AppState.itemsPerPage - 1, rows.length - 1);
+
+    table.innerHTML = '';
+    const headerRow = document.createElement('tr');
+    const sortedInfo = AppState.sortedColumn[tableId];
+
+    finalHeader.forEach((column, index) => {
+      const th = document.createElement('th');
+      th.textContent = column;
+
+      if (index < header.length) {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => sort(tableId, index));
+        th.addEventListener('mouseenter', () => {
+          if (!th.textContent.includes('↑') && !th.textContent.includes('↓')) {
+            th.style.background = '#e2e8f0';
+          }
+        });
+        th.addEventListener('mouseleave', () => {
+          if (!th.textContent.includes('↑') && !th.textContent.includes('↓')) {
+            th.style.background = '#f1f5f9';
+          }
+        });
+
+        if (sortedInfo && sortedInfo.index === index) {
+          th.textContent = `${column}${sortedInfo.isAsc ? ' ↑' : ' ↓'}`;
+          th.style.background = '#dbeafe';
         }
-        currentRows.push(rowData);
       }
-    }
-    
-    if(newestOn){
-      // 현재 필터된 데이터를 역순으로 정렬 (헤더는 그대로)
-      const reversedRows=[currentRows[0],...currentRows.slice(1).reverse()];
-      renderTable(reversedRows,'libraryTable',true);
-    }else{
-      // 원본 순서로 복원
-      renderTable(originalLibraryData,'libraryTable',true);
-    }
-    
-    // 모든 필터 재적용
-    applyAllFilters();
-    
-    // 검색 기능 다시 바인딩
-    addSearch('searchLibrary','libraryTable');
-    
-    // 페이지와 테이블 스크롤을 맨 위로 이동
-    window.scrollTo(0,0);
-    document.querySelector('#librarySection .table-wrap').scrollTop=0;
-  };
-  
-  // 모든 필터를 재적용하는 함수
-  function applyAllFilters(){
-    let dataToFilter = [...originalLibraryData];
-    
-    // 최신 순 정렬 적용
-    if(newestOn){
-      dataToFilter = [dataToFilter[0], ...dataToFilter.slice(1).reverse()];
-    }
-    
-    // 필터링 적용
-    const statusIdx = findColIndex(library[0],['상태','대출여부']);
-    const filteredData = [dataToFilter[0]]; // 헤더 보존
-    
-    for(let i = 1; i < dataToFilter.length; i++){
-      const row = dataToFilter[i];
-      let shouldShow = true;
-      
-      // 대출 중 필터 적용
-      if(borrowedOn){
-        const status = row[statusIdx] || '';
+
+      headerRow.appendChild(th);
+    });
+
+    table.appendChild(headerRow);
+
+    for (let i = startIdx; i <= endIdx; i++) {
+      const row = rows[i];
+      if (!row) {
+        continue;
+      }
+
+      const tr = document.createElement('tr');
+      row.forEach((cell) => {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        tr.appendChild(td);
+      });
+
+      if (withQR) {
+        const titleIdx = Utils.findColIndex(header, ['제목', '도서명']);
+        const codeIdx = Utils.findColIndex(header, ['코드', '코드번호']);
+        const statusIdx = Utils.findColIndex(header, ['상태', '대출여부']);
+        const authorIdx = Utils.findColIndex(header, ['지은이', '저자']);
+        const renterIdx = Utils.findColIndex(header, ['대출자', '대여자']);
+
         const statusInfo = row._statusInfo;
-        const isBorrowed = statusInfo ? 
-          (statusInfo.status === '대출' || statusInfo.status === '연체') :
-          /(대출|대여|연체)/.test(status);
-        if(!isBorrowed) shouldShow = false;
+        const statusText = statusIdx !== -1 ? row[statusIdx] : '';
+
+        if (statusInfo && statusInfo.className) {
+          tr.classList.add(statusInfo.className);
+        } else if (statusText.includes('연체')) {
+          tr.classList.add('overdue');
+        } else if (/(대출|대여)/.test(statusText)) {
+          tr.classList.add('borrowed');
+        }
+
+        if (titleIdx !== -1) {
+          const tdTitle = tr.children[titleIdx];
+          const titleText = Utils.norm(row[titleIdx]);
+          const codeText = codeIdx !== -1 ? Utils.norm(row[codeIdx]) : '';
+          const authorText = authorIdx !== -1 ? Utils.norm(row[authorIdx]) : '';
+
+          if (tdTitle) {
+            tdTitle.style.color = '#2563eb';
+            tdTitle.style.cursor = 'pointer';
+            tdTitle.style.fontWeight = '500';
+            tdTitle.title = '클릭하면 도서 상세정보를 확인할 수 있습니다';
+            tdTitle.onclick = () => BookPreviewModal.show(codeText, titleText, authorText);
+          }
+        }
+
+        const qrCell = document.createElement('td');
+        const qrButton = document.createElement('button');
+        qrButton.className = 'qr-btn';
+        qrButton.textContent = '📷 QR';
+        qrButton.onclick = () => {
+          QRManager.generate({
+            code: row[codeIdx] || '',
+            title: row[titleIdx] || '',
+            author: row[authorIdx] || '',
+            renter: row[renterIdx] || '',
+            status: row[statusIdx] || ''
+          });
+        };
+        qrCell.appendChild(qrButton);
+        tr.appendChild(qrCell);
       }
-      
-      // 30일 필터 적용
-      if(recentOn && dateIdx !== -1){
-        const dateText = row[dateIdx] || '';
+
+      table.appendChild(tr);
+    }
+  }
+
+  function sort(tableId, colIdx) {
+    const rows = AppState.baseData[tableId];
+    if (!rows.length) {
+      return;
+    }
+
+    const header = rows[0];
+    const dataRows = rows.slice(1);
+    const sortKey = `${tableId}_${colIdx}`;
+    const isAsc = !AppState.sortState[sortKey];
+    AppState.sortState[sortKey] = isAsc;
+    AppState.sortedColumn[tableId] = { index: colIdx, isAsc };
+
+    dataRows.sort((a, b) => {
+      const aVal = a[colIdx] || '';
+      const bVal = b[colIdx] || '';
+      const aNum = parseFloat(String(aVal).replace(/[^\d.-]/g, ''));
+      const bNum = parseFloat(String(bVal).replace(/[^\d.-]/g, ''));
+      let result;
+
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        result = aNum - bNum;
+      } else {
+        result = String(aVal).localeCompare(String(bVal), 'ko', { numeric: true });
+      }
+
+      return isAsc ? result : -result;
+    });
+
+    const sortedData = [header, ...dataRows];
+    AppState.baseData[tableId] = [...sortedData];
+    AppState.viewData[tableId] = [...sortedData];
+    AppState.currentPage[tableId] = 1;
+    renderPage(tableId);
+    renderPagination(tableId);
+  }
+
+  return { render, changePage, sort };
+})();
+
+const FilterManager = (() => {
+  let originalLibraryData = [];
+  let dateIndex = -1;
+  const boundSearchInputs = new Set();
+
+  function init(data) {
+    originalLibraryData = [...data];
+    dateIndex = Utils.findColIndex(data[0], ['등록일', '일자', '날짜', '입고일', '구입일']);
+  }
+
+  function applyFilters() {
+    if (!originalLibraryData.length) {
+      return;
+    }
+
+    let data = [...originalLibraryData];
+
+    if (AppState.filters.newest) {
+      data = [data[0], ...data.slice(1).reverse()];
+    }
+
+    const statusIdx = Utils.findColIndex(data[0], ['상태', '대출여부']);
+    const filtered = [data[0]];
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      let show = true;
+
+      if (AppState.filters.borrowed) {
+        const statusInfo = row._statusInfo;
+        const statusText = statusIdx !== -1 ? row[statusIdx] || '' : '';
+        const isBorrowed = statusInfo
+          ? ['대출', '연체'].includes(statusInfo.status)
+          : /(대출|대여|연체)/.test(statusText);
+        if (!isBorrowed) {
+          show = false;
+        }
+      }
+
+      if (show && AppState.filters.recent && dateIndex !== -1) {
+        const dateText = row[dateIndex] || '';
         const bookDate = new Date(dateText);
         const now = new Date();
-        const thirtyDaysAgo = new Date(now.getTime() - 30*24*60*60*1000);
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         const isRecent = !isNaN(bookDate) && bookDate >= thirtyDaysAgo;
-        if(!isRecent) shouldShow = false;
-      }
-      
-      if(shouldShow) filteredData.push(row);
-    }
-    
-    // 필터된 데이터로 테이블 재렌더링
-    currentPage['libraryTable'] = 1;
-    renderTable(filteredData, 'libraryTable', true);
-    
-    // 검색 기능 다시 바인딩
-    addSearch('searchLibrary','libraryTable');
-  }
-
-  // ✅ 최근 30일 도서만 보기 필터 (등록일 컬럼 확인)
-  const btnRecent=document.getElementById('btnRecent');
-  let recentOn=false;
-  
-  // 등록일 컬럼이 있는지 확인
-  const dateIdx=findColIndex(library[0],['등록일','일자','날짜','입고일','구입일']);
-  
-  if(dateIdx===-1){
-    // 등록일 컬럼이 없으면 버튼 비활성화
-    btnRecent.style.opacity='0.5';
-    btnRecent.style.cursor='not-allowed';
-    btnRecent.title='등록일 정보가 없어서 사용할 수 없습니다';
-    btnRecent.onclick=()=>{
-      alert('📅 등록일 정보가 없어서 최근 30일 필터를 사용할 수 없습니다.\n\nCSV 파일에 "등록일", "일자", "날짜" 등의 컬럼을 추가해주세요.');
-    };
-  }else{
-    // 등록일 컬럼이 있으면 정상 동작
-    btnRecent.onclick=()=>{
-      // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
-      if(!document.getElementById('librarySection').classList.contains('hidden')==false){
-        document.getElementById('librarySection').classList.remove('hidden');
-        document.getElementById('loanSection').classList.add('hidden');
-        document.getElementById('btnLibrary').classList.add('active');
-        document.getElementById('btnLoans').classList.remove('active');
-      }
-      
-      recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
-      
-      // 모든 필터 재적용
-      applyAllFilters();
-      
-      // 페이지와 테이블 스크롤을 맨 위로 이동
-      window.scrollTo(0,0);
-      document.querySelector('#librarySection .table-wrap').scrollTop=0;
-    };
-  }
-});
-
-document.getElementById('btnLoans').onclick=()=>{
-  document.getElementById('loanSection').classList.remove('hidden');
-  document.getElementById('librarySection').classList.add('hidden');
-  document.getElementById('btnLoans').classList.add('active');
-  document.getElementById('btnLibrary').classList.remove('active');
-  // 페이지와 테이블 스크롤을 맨 위로 이동
-  window.scrollTo(0,0);
-  document.querySelector('#loanSection .table-wrap').scrollTop=0;
-};
-document.getElementById('btnLibrary').onclick=()=>{
-  document.getElementById('librarySection').classList.remove('hidden');
-  document.getElementById('loanSection').classList.add('hidden');
-  document.getElementById('btnLibrary').classList.add('active');
-  document.getElementById('btnLoans').classList.remove('active');
-  // 페이지와 테이블 스크롤을 맨 위로 이동
-  window.scrollTo(0,0);
-  document.querySelector('#librarySection .table-wrap').scrollTop=0;
-};
-document.getElementById('btnAddBook').onclick=()=>{
-  window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
-};
-
-// ========== Dooray 연동 기능 ==========
-
-document.getElementById('btnDooraySync').onclick=()=>{
-  showDoorayModal();
-};
-
-function showDoorayModal() {
-  const modal = document.getElementById('doorayModal');
-  const statusDiv = document.getElementById('doorayStatus');
-  const featuresDiv = document.getElementById('doorayFeatures');
-  const setupDiv = document.getElementById('dooraySetup');
-  const testResultDiv = document.getElementById('doorayTestResult');
-  
-  modal.style.display = 'flex';
-  testResultDiv.style.display = 'none';
-  
-  // 기존 설정값을 입력 필드에 표시
-  const backendUrlInput = document.getElementById('gasBackendUrl');
-  const wikiIdInput = document.getElementById('doorayWikiId');
-  const pageIdInput = document.getElementById('doorayPageId');
-  
-  if (backendUrlInput) backendUrlInput.value = localStorage.getItem('gas_backend_url') || '';
-  if (wikiIdInput) wikiIdInput.value = localStorage.getItem('dooray_wiki_id') || '';
-  if (pageIdInput) pageIdInput.value = localStorage.getItem('dooray_page_id') || '';
-  
-  // Dooray 연동 상태 확인
-  const hasConfig = localStorage.getItem('gas_backend_url') && window.DOORAY_CONFIG.wikiId && window.DOORAY_CONFIG.pageId;
-  
-  if (hasConfig && window.doorayIntegration && window.doorayIntegration.isEnabled) {
-    statusDiv.className = 'status-card status-success';
-    statusDiv.innerHTML = `<strong>✅ Dooray 연동 활성화됨</strong><br>Wiki ID: ${window.DOORAY_CONFIG.wikiId}<br>Page ID: ${window.DOORAY_CONFIG.pageId}`;
-    featuresDiv.style.display = 'block';
-    setupDiv.style.display = 'block'; // 수정도 가능하게
-  } else {
-    statusDiv.className = 'status-card status-warning';
-    statusDiv.innerHTML = '<strong>⚙️ Dooray 연동 설정 필요</strong><br>Google Apps Script 백엔드 정보를 입력해주세요.';
-    featuresDiv.style.display = 'none';
-    setupDiv.style.display = 'block';
-  }
-  
-  // 팝업 외부 클릭 시 닫기
-  modal.onclick = (e) => {
-    if (e.target === modal) {
-      closeDoorayModal();
-    }
-  };
-  modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
-}
-
-function closeDoorayModal() {
-  const modal = document.getElementById('doorayModal');
-  modal.style.display = 'none';
-  modal.onclick = null;
-}
-
-// 🧪 Dooray 연결 테스트
-async function testDoorayConnection() {
-  const testResultDiv = document.getElementById('doorayTestResult');
-  testResultDiv.style.display = 'block';
-  testResultDiv.className = 'test-result';
-  testResultDiv.innerHTML = '🔄 연결 테스트 중...';
-  
-  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
-    return;
-  }
-  
-  try {
-    const result = await window.doorayIntegration.testConnection();
-    
-    if (result.success) {
-      testResultDiv.className = 'test-result status-success';
-      testResultDiv.innerHTML = `
-        ✅ ${result.message}
-        
-Wiki ID: ${result.data.wikiId || 'N/A'}
-페이지 제목: ${result.data.pageTitle || 'N/A'}
-페이지 ID: ${result.data.pageId || 'N/A'}
-콘텐츠 길이: ${result.data.contentLength || 0}자
-마지막 수정: ${result.data.lastModified || 'N/A'}
-      `;
-    } else {
-      testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = '❌ ' + result.message;
-    }
-  } catch (error) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ 테스트 실패: ' + error.message;
-  }
-}
-
-// 📊 도서 현황을 Dooray Wiki에 동기화
-async function syncLibraryToWiki() {
-  const testResultDiv = document.getElementById('doorayTestResult');
-  testResultDiv.style.display = 'block';
-  testResultDiv.className = 'test-result';
-  testResultDiv.innerHTML = '🔄 Wiki 업데이트 중...';
-  
-  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
-    return;
-  }
-  
-  try {
-    // 디버깅: 전역 변수 상태 확인
-    console.log('🔍 window.allTableData 상태:', window.allTableData);
-    console.log('🔍 window 객체 키들:', Object.keys(window).filter(key => key.includes('allTableData') || key.includes('Table')));
-    
-    // 여러 방법으로 데이터 찾기 시도
-    let libraryData = null;
-    
-    // 방법 1: window.allTableData 확인
-    if (window.allTableData && window.allTableData.libraryTable && window.allTableData.libraryTable.length > 0) {
-      libraryData = window.allTableData.libraryTable;
-      console.log('✅ 방법 1 성공: window.allTableData.libraryTable 사용');
-    }
-    // 방법 2: 전역 변수 allTableData 직접 확인
-    else if (typeof allTableData !== 'undefined' && allTableData.libraryTable && allTableData.libraryTable.length > 0) {
-      libraryData = allTableData.libraryTable;
-      console.log('✅ 방법 2 성공: 전역 allTableData 사용');
-    }
-    // 방법 3: 테이블에서 직접 추출
-    else {
-      console.log('⚠️ 전역 데이터 없음, 테이블에서 직접 추출 시도');
-      const libraryTable = document.getElementById('libraryTable');
-      if (libraryTable) {
-        const rows = libraryTable.querySelectorAll('tr');
-        if (rows.length > 0) {
-          libraryData = [];
-          rows.forEach((row) => {
-            const cells = row.querySelectorAll('td, th');
-            const rowData = [];
-            cells.forEach(cell => {
-              rowData.push(cell.textContent.trim());
-            });
-            if (rowData.length > 0) {
-              libraryData.push(rowData);
-            }
-          });
-          console.log('✅ 방법 3 성공: 테이블에서 직접 추출, 행 수:', libraryData.length);
+        if (!isRecent) {
+          show = false;
         }
       }
+
+      if (show) {
+        filtered.push(row);
+      }
     }
 
-    if (!libraryData || libraryData.length === 0) {
-      testResultDiv.className = 'test-result status-warning';
-      testResultDiv.innerHTML = `
-        ❌ 도서관 데이터를 찾을 수 없습니다.
-        
-� 디버깅 정보:
-• window.allTableData 존재: ${!!window.allTableData}
-• libraryTable 존재: ${!!(window.allTableData && window.allTableData.libraryTable)}
-• 테이블 요소 존재: ${!!document.getElementById('libraryTable')}
+    TableManager.render(filtered, 'libraryTable', true);
+  }
 
-📋 브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.
-      `;
+  function toggleBorrowed() {
+    AppState.filters.borrowed = !AppState.filters.borrowed;
+    applyFilters();
+    return AppState.filters.borrowed;
+  }
+
+  function toggleNewest() {
+    AppState.filters.newest = !AppState.filters.newest;
+    applyFilters();
+    return AppState.filters.newest;
+  }
+
+  function toggleRecent() {
+    if (dateIndex === -1) {
+      return { available: false };
+    }
+    AppState.filters.recent = !AppState.filters.recent;
+    applyFilters();
+    return { available: true, active: AppState.filters.recent };
+  }
+
+  function bindSearch(inputId, tableId) {
+    if (boundSearchInputs.has(inputId)) {
       return;
     }
-    
-    if (!libraryData || libraryData.length === 0) {
-      testResultDiv.className = 'test-result status-warning';
-      testResultDiv.innerHTML = `
-        ❌ 도서 데이터가 없습니다.
-        
-📋 먼저 도서 목록을 로드해주세요.
-      `;
+
+    const input = Utils.get(inputId);
+    if (!input) {
       return;
     }
-    const currentDate = new Date().toLocaleString('ko-KR');
-    
-    // 미반납 도서 필터링 (대출중, 연체 상태)
+
+    let timer;
+    input.addEventListener('input', (event) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const value = event.target.value.trim();
+        const base = AppState.baseData[tableId];
+
+        if (!value) {
+          TableManager.render(base, tableId, tableId === 'libraryTable', { preserveBase: true });
+          return;
+        }
+
+        const filtered = [base[0]];
+        for (let i = 1; i < base.length; i++) {
+          const rowText = base[i].join(' ');
+          if (rowText.includes(value)) {
+            filtered.push(base[i]);
+          }
+        }
+
+        TableManager.render(filtered, tableId, tableId === 'libraryTable', { preserveBase: true });
+      }, 150);
+    });
+
+    boundSearchInputs.add(inputId);
+  }
+
+  function getDateIndex() {
+    return dateIndex;
+  }
+
+  function setOriginalData(data) {
+    originalLibraryData = [...data];
+    if (dateIndex === -1) {
+      dateIndex = Utils.findColIndex(data[0], ['등록일', '일자', '날짜', '입고일', '구입일']);
+    }
+  }
+
+  return {
+    init,
+    applyFilters,
+    toggleBorrowed,
+    toggleNewest,
+    toggleRecent,
+    bindSearch,
+    getDateIndex,
+    setOriginalData
+  };
+})();
+
+const BookPreviewModal = (() => {
+  function show(code, title, author = '') {
+    const modal = Utils.get('bookPreviewModal');
+    const previewContent = Utils.get('bookPreviewContent');
+    const historyContent = Utils.get('bookHistoryContent');
+
+    if (!modal || !previewContent || !historyContent) {
+      return;
+    }
+
+    modal.style.display = 'flex';
+    switchTab('preview');
+    previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
+
+    fetchBookInfo(title, author)
+      .then((bookData) => {
+        if (bookData) {
+          renderBookInfo(bookData, previewContent);
+        } else {
+          renderBasicBookInfo(title, author, code, previewContent);
+        }
+      })
+      .catch(() => {
+        renderBasicBookInfo(title, author, code, previewContent);
+      })
+      .finally(() => {
+        renderBookHistory(code, title, historyContent);
+      });
+
+    modal.onclick = (event) => {
+      if (event.target === modal) {
+        close();
+      }
+    };
+
+    const inner = modal.querySelector('.inner');
+    if (inner) {
+      inner.onclick = (event) => event.stopPropagation();
+    }
+  }
+
+  async function fetchBookInfo(title, author) {
+    const query = encodeURIComponent(`${title} ${author}`.trim());
+    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5&langRestrict=ko`;
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+
+    if (!data.items || !data.items.length) {
+      return null;
+    }
+
+    return findBestMatch(data.items, title);
+  }
+
+  function findBestMatch(items, targetTitle) {
+    let bestMatch = items[0];
+    let bestScore = 0;
+    const normalized = targetTitle.toLowerCase();
+
+    items.forEach((item) => {
+      const title = (item.volumeInfo.title || '').toLowerCase();
+      const score = calculateSimilarity(normalized, title);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = item;
+      }
+    });
+
+    return bestMatch;
+  }
+
+  function calculateSimilarity(a, b) {
+    const wordsA = a.split(/\s+/);
+    const wordsB = b.split(/\s+/);
+    let common = 0;
+
+    wordsA.forEach((word) => {
+      if (word.length > 1 && wordsB.some((candidate) => candidate.includes(word) || word.includes(candidate))) {
+        common++;
+      }
+    });
+
+    return common / Math.max(wordsA.length, wordsB.length);
+  }
+
+  function renderBookInfo(bookData, container) {
+    const info = bookData.volumeInfo;
+    const title = info.title || '제목 없음';
+    const authors = info.authors ? info.authors.join(', ') : '저자 미상';
+    const publisher = info.publisher || '출판사 미상';
+    const publishedDate = info.publishedDate || '출간일 미상';
+    const description = info.description || '설명이 없습니다.';
+    const thumbnail = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
+    const pageCount = info.pageCount || '-';
+    const categories = info.categories ? info.categories.join(', ') : '-';
+    const language = info.language === 'ko' ? '한국어' : info.language || '-';
+    const rating = info.averageRating || 0;
+    const ratingsCount = info.ratingsCount || 0;
+
+    container.innerHTML = `
+      <div class="book-header">
+        <div class="book-cover">
+          ${thumbnail
+            ? `<img src="${thumbnail.replace('http:', 'https:')}" alt="책 표지" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjE2MCIgdmlld0JveD0iMCAwIDEyMCAxNjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxNjAiIGZpbGw9IiNFM0U1RTciLz48dGV4dCB4PSI2MCIgeT0iODAiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Q0EzQUYiIGZvbnQtc2l6ZT0iMTIiPk5PIENPVkVSPC90ZXh0Pjwvc3ZnPg=='">`
+            : '<div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>'}
+        </div>
+        <div class="book-info">
+          <h2 class="book-title">${title}</h2>
+          <p class="book-author">👤 ${authors}</p>
+          <p class="book-publisher">🏢 ${publisher}</p>
+          ${rating > 0
+            ? `<div class="book-rating">
+                <span class="stars">${'★'.repeat(Math.floor(rating))}${'☆'.repeat(5 - Math.floor(rating))}</span>
+                <span style="color:#6b7280;font-size:13px;">${rating}/5.0 (${ratingsCount}명)</span>
+              </div>`
+            : ''}
+        </div>
+      </div>
+      <div class="book-meta">
+        <div class="meta-item"><span class="meta-label">📅 출간일</span><span class="meta-value">${publishedDate}</span></div>
+        <div class="meta-item"><span class="meta-label">📄 페이지</span><span class="meta-value">${pageCount}페이지</span></div>
+        <div class="meta-item"><span class="meta-label">🏷️ 분야</span><span class="meta-value">${categories}</span></div>
+        <div class="meta-item"><span class="meta-label">🌐 언어</span><span class="meta-value">${language}</span></div>
+      </div>
+      <div class="book-description">
+        <strong>📝 도서 소개</strong><br><br>
+        ${description.length > 500 ? `${description.substring(0, 500)}...` : description}
+      </div>`;
+  }
+
+  function renderBasicBookInfo(title, author, code, container) {
+    container.innerHTML = `
+      <div class="book-header">
+        <div class="book-cover">
+          <div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>
+        </div>
+        <div class="book-info">
+          <h2 class="book-title">${title}</h2>
+          ${author ? `<p class="book-author">👤 ${author}</p>` : ''}
+          <p style="color:#6b7280;font-size:14px;">📚 코드: ${code}</p>
+        </div>
+      </div>
+      <div class="book-description" style="text-align:center;color:#6b7280;padding:40px;">
+        상세한 도서 정보를 찾을 수 없습니다.<br>
+        도서관 내부 정보만 표시됩니다.
+      </div>`;
+  }
+
+  function renderBookHistory(code, title, container) {
+    const records = (window.booksData || []).filter((record) => Utils.norm(record[1]) === code);
+
+    if (!records.length) {
+      container.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">대출 이력이 없습니다.</div>';
+      return;
+    }
+
+    const rows = records
+      .map((record) => {
+        const loanStatus = LoanStatus.calculate(record[0], record[5]);
+        const displayStatus = loanStatus.displayText || record[5];
+        const className = loanStatus.status === '연체'
+          ? 'background:#fee2e2;color:#dc2626;'
+          : loanStatus.status === '대출'
+            ? 'background:#fef3c7;color:#92400e;'
+            : 'background:#d1fae5;color:#047857;';
+
+        return `
+          <tr>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${record[0]}</td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">${record[4]}</td>
+            <td style="padding:10px 12px;border:1px solid #e2e8f0;">
+              <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;${className}">${displayStatus}</span>
+            </td>
+          </tr>`;
+      })
+      .join('');
+
+    container.innerHTML = `
+      <h4 style="margin:0 0 16px 0;color:#1f2937;">📋 대출 이력 (총 ${records.length}건)</h4>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="background:#f8fafc;">
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">등록일</th>
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">대여자</th>
+          <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">상태</th>
+        </tr>
+        ${rows}
+      </table>`;
+  }
+
+  function switchTab(tabName) {
+    const tabs = {
+      preview: Utils.get('previewTab'),
+      history: Utils.get('historyTab')
+    };
+
+    const buttons = document.querySelectorAll('#bookPreviewModal .tab-button');
+    buttons.forEach((button) => {
+      button.classList.toggle('active', button.textContent.includes(tabName === 'preview' ? '도서 정보' : '대출 이력'));
+    });
+
+    Object.entries(tabs).forEach(([key, element]) => {
+      if (element) {
+        element.classList.toggle('active', key === tabName);
+      }
+    });
+  }
+
+  function close() {
+    const modal = Utils.get('bookPreviewModal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.onclick = null;
+    }
+  }
+
+  return { show, switchTab, close };
+})();
+
+const HistoryModal = (() => {
+  function show(code, title) {
+    const modal = Utils.get('historyModal');
+    const titleEl = Utils.get('histTitle');
+    const content = Utils.get('histContent');
+
+    if (!modal || !titleEl || !content) {
+      return;
+    }
+
+    modal.style.display = 'flex';
+    titleEl.innerHTML = `📖 ${title} (${code})`;
+
+    const records = (window.booksData || []).filter((row) => Utils.norm(row[1]) === code);
+    if (!records.length) {
+      content.innerHTML = '<p style="text-align:center;padding:32px;color:#6b7280;">대출 이력이 없습니다.</p>';
+      return;
+    }
+
+    const rows = records
+      .map((row) => {
+        const status = LoanStatus.calculate(row[0], row[5]);
+        return `
+          <tr>
+            <td>${row[0]}</td>
+            <td>${row[4]}</td>
+            <td>${status.displayText || row[5]}</td>
+          </tr>`;
+      })
+      .join('');
+
+    content.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="width:30%;padding:10px 12px;border:1px solid #e2e8f0;background:#f8fafc;">등록일</th>
+            <th style="width:25%;padding:10px 12px;border:1px solid #e2e8f0;background:#f8fafc;">대출자</th>
+            <th style="width:45%;padding:10px 12px;border:1px solid #e2e8f0;background:#f8fafc;">상태</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function close() {
+    const modal = Utils.get('historyModal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.onclick = null;
+    }
+  }
+
+  return { show, close };
+})();
+
+const DoorayUI = (() => {
+  function updateButtonStatus() {
+    const button = Utils.get('btnDooraySync');
+    if (!button) {
+      return;
+    }
+
+    const enabled = window.doorayIntegration && window.doorayIntegration.isEnabled;
+    if (enabled) {
+      button.innerHTML = '✅ Dooray 연동됨';
+      button.style.background = '#10b981';
+      button.title = 'Dooray 연동이 활성화되어 자동 알림이 작동합니다';
+    } else {
+      button.innerHTML = '🔄 Dooray 연동';
+      button.style.background = '#7c3aed';
+      button.title = 'Dooray API 설정이 필요합니다';
+    }
+  }
+
+  function showModal() {
+    const modal = Utils.get('doorayModal');
+    if (!modal) {
+      return;
+    }
+
+    const statusDiv = Utils.get('doorayStatus');
+    const featuresDiv = Utils.get('doorayFeatures');
+    const setupDiv = Utils.get('dooraySetup');
+    const testResult = Utils.get('doorayTestResult');
+
+    modal.style.display = 'flex';
+    if (testResult) {
+      testResult.style.display = 'none';
+      testResult.textContent = '';
+    }
+
+    const backendUrlInput = Utils.get('gasBackendUrl');
+    const wikiIdInput = Utils.get('doorayWikiId');
+    const pageIdInput = Utils.get('doorayPageId');
+
+    if (backendUrlInput) backendUrlInput.value = localStorage.getItem('gas_backend_url') || '';
+    if (wikiIdInput) wikiIdInput.value = localStorage.getItem('dooray_wiki_id') || '';
+    if (pageIdInput) pageIdInput.value = localStorage.getItem('dooray_page_id') || '';
+
+    const enabled = window.doorayIntegration && window.doorayIntegration.isEnabled;
+    if (enabled) {
+      statusDiv.className = 'status-card status-success';
+      statusDiv.innerHTML = `<strong>✅ Dooray 연동 활성화됨</strong><br>Wiki ID: ${window.DOORAY_CONFIG.wikiId}<br>Page ID: ${window.DOORAY_CONFIG.pageId}`;
+      if (featuresDiv) featuresDiv.style.display = 'block';
+      if (setupDiv) setupDiv.style.display = 'block';
+    } else {
+      statusDiv.className = 'status-card status-warning';
+      statusDiv.innerHTML = '<strong>⚙️ Dooray 연동 설정 필요</strong><br>Google Apps Script 백엔드 정보를 입력해주세요.';
+      if (featuresDiv) featuresDiv.style.display = 'none';
+      if (setupDiv) setupDiv.style.display = 'block';
+    }
+
+    modal.onclick = (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    };
+
+    const inner = modal.querySelector('.inner');
+    if (inner) {
+      inner.onclick = (event) => event.stopPropagation();
+    }
+  }
+
+  function closeModal() {
+    const modal = Utils.get('doorayModal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.onclick = null;
+    }
+  }
+
+  async function testConnection() {
+    const resultDiv = Utils.get('doorayTestResult');
+    if (!resultDiv) {
+      return;
+    }
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'test-result';
+    resultDiv.innerHTML = '🔄 연결 테스트 중...';
+
+    if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+      return;
+    }
+
+    try {
+      const result = await window.doorayIntegration.testConnection();
+      if (result.success) {
+        resultDiv.className = 'test-result status-success';
+        resultDiv.innerHTML = `✅ ${result.message}<br>Wiki ID: ${result.data.wikiId || 'N/A'}<br>페이지 제목: ${result.data.pageTitle || 'N/A'}`;
+      } else {
+        resultDiv.className = 'test-result status-error';
+        resultDiv.innerHTML = '❌ ' + result.message;
+      }
+    } catch (error) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 테스트 실패: ' + error.message;
+    }
+  }
+
+  function getLibrarySnapshot() {
+    const libraryData = AppState.baseData.libraryTable;
+    return libraryData && libraryData.length ? libraryData : null;
+  }
+
+  function extractUnreturnedBooks(libraryData) {
+    if (!libraryData || !libraryData.length) {
+      return [];
+    }
+
+    const header = libraryData[0];
+    const statusIdx = Utils.findColIndex(header, ['상태', '대출여부']);
+    const borrowerIdx = Utils.findColIndex(header, ['대출자', '대여자']);
+    const codeIdx = Utils.findColIndex(header, ['코드', '코드번호']);
+    const titleIdx = Utils.findColIndex(header, ['제목', '도서명']);
+    const authorIdx = Utils.findColIndex(header, ['지은이', '저자']);
+
     const unreturned = [];
-    const headers = libraryData[0]; // 헤더 행
-    
-    // 상태와 대출자 열 인덱스 찾기
-    let statusIndex = -1;
-    let borrowerIndex = -1;
-    for (let i = 0; i < headers.length; i++) {
-      const header = headers[i].toString().toLowerCase();
-      if (header.includes('상태') || header.includes('status')) {
-        statusIndex = i;
-      }
-      if (header.includes('대출자') || header.includes('borrower') || header.includes('대여자')) {
-        borrowerIndex = i;
-      }
-    }
-    
-    // 디버깅: 헤더 정보 출력
-    console.log('📋 테이블 헤더:', headers);
-    console.log('📊 상태 열 인덱스:', statusIndex, '대출자 열 인덱스:', borrowerIndex);
-    console.log('📚 총 데이터 행 수:', libraryData.length - 1);
-    
-    // 미반납 도서 추출
     for (let i = 1; i < libraryData.length; i++) {
       const row = libraryData[i];
-      const status = statusIndex >= 0 ? (row[statusIndex] || '').toString().trim() : '';
-      const borrower = borrowerIndex >= 0 ? (row[borrowerIndex] || '').toString().trim() : '';
-      
-      // 디버깅: 각 행 데이터 확인
-      if (i <= 3) { // 처음 3개 행만 로그 출력
-        console.log(`📖 행 ${i}:`, {
-          title: row[2] || '제목없음',
-          status: status,
-          borrower: borrower,
-          fullRow: row
-        });
-      }
-      
-      // 더 강력한 미반납 조건 체크
-      const isUnreturned = 
-        status.includes('대출') || 
-        status.includes('연체') || 
-        status.includes('borrowed') ||
-        status.includes('overdue') ||
-        (borrower && borrower !== '' && borrower !== '-' && borrower !== '없음' && borrower !== 'N/A');
-      
-      if (isUnreturned) {
+      const status = statusIdx !== -1 ? String(row[statusIdx] || '') : '';
+      const borrower = borrowerIdx !== -1 ? String(row[borrowerIdx] || '') : '';
+      const isBorrowed = /(대출|대여|연체|borrowed|overdue)/i.test(status) || (!!borrower && borrower !== '-' && borrower !== '');
+
+      if (isBorrowed) {
         unreturned.push({
-          bookCode: row[1] || '',
-          title: row[2] || '제목없음',
-          author: row[3] || '저자미상',
-          borrower: borrower || '대출자정보없음',
+          bookCode: codeIdx !== -1 ? row[codeIdx] : '',
+          title: titleIdx !== -1 ? row[titleIdx] : '제목없음',
+          author: authorIdx !== -1 ? row[authorIdx] : '저자미상',
+          borrower: borrower || '대출자미상',
           status: status || '상태정보없음'
         });
       }
     }
-    
-    // 디버깅: 미반납 도서 개수 확인
-    console.log('🔍 발견된 미반납 도서:', unreturned.length, unreturned);
-    
-    // Wiki 콘텐츠 생성
-    let wikiContent = `# 📚 도서관리 현황 (${currentDate} 업데이트)\n\n`;
-    
-    if (unreturned.length > 0) {
-      wikiContent += `## � 현재 미반납 도서 목록\n\n`;
-      wikiContent += `| 도서코드 | 도서명 | 저자 | 대출자 | 상태 |\n`;
-      wikiContent += `|----------|--------|------|--------|------|\n`;
-      
-      unreturned.forEach(book => {
-        wikiContent += `| ${book.bookCode} | ${book.title} | ${book.author} | ${book.borrower} | ${book.status} |\n`;
-      });
-      
-      wikiContent += `\n## 📈 통계 요약\n`;
-      wikiContent += `- **전체 도서**: ${libraryData.length - 1}권\n`;
-      wikiContent += `- **미반납 도서**: ${unreturned.length}권\n`;
-      
-      const overdue = unreturned.filter(book => book.status.includes('연체')).length;
-      if (overdue > 0) {
-        wikiContent += `- **연체 도서**: ${overdue}권 ⚠️\n`;
-      }
-      
-      wikiContent += `- **반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n\n`;
-    } else {
-      wikiContent += `## ✅ 현재 모든 도서가 반납된 상태입니다!\n\n`;
-      wikiContent += `🎉 **축하합니다!** 모든 도서가 정상적으로 반납되었습니다.\n\n`;
-      wikiContent += `## 📈 통계 요약\n`;
-      wikiContent += `- **전체 도서**: ${libraryData.length - 1}권\n`;
-      wikiContent += `- **반납률**: 100% 🏆\n\n`;
-    }
-    
-    wikiContent += `## 🔄 업데이트 정보\n`;
-    wikiContent += `- **업데이트 시간**: ${currentDate}\n`;
-    
-    // 안전한 데이터 소스 확인
-    let dataSource = '도서관리 시스템';
-    try {
-      if (window.allTableData && window.allTableData.fileName) {
-        dataSource = window.allTableData.fileName;
-      }
-    } catch (e) {
-      // 오류 무시하고 기본값 사용
-    }
-    
-    wikiContent += `- **데이터 소스**: ${dataSource}\n`;
-    wikiContent += `- **업데이트 방법**: 실시간 테이블 데이터 동기화\n\n`;
-    wikiContent += `---\n`;
-    wikiContent += `*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
 
-    // ASCII 안전 버전 (한글 문제 회피)
-    const simpleSummary = `# Library Management Status (${new Date().toISOString().split('T')[0]})
+    return unreturned;
+  }
 
-## Summary
-- Total Books: ${libraryData.length - 1}
-- Unreturned Books: ${unreturned.length}  
-- Return Rate: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+  function buildWikiContent(libraryData) {
+    const unreturned = extractUnreturnedBooks(libraryData);
+    const totalBooks = Math.max(libraryData.length - 1, 0);
+    const overdueCount = unreturned.filter((book) => String(book.status).includes('연체')).length;
+    const returnRate = totalBooks === 0 ? 100 : ((totalBooks - unreturned.length) / totalBooks * 100).toFixed(1);
+    const now = new Date().toLocaleString('ko-KR');
 
-${unreturned.length === 0 ? 
-  'All books have been returned!' : 
-  `${unreturned.length} books are currently unreturned.`}
-
----
-Updated: ${new Date().toISOString()}`;
-
-    // 마크다운 형식의 도서관 현황 (ASCII 안전 버전)
-    const testContent = `# 📚 Library Management Status
-
-**Update Time:** ${new Date().toLocaleString('ko-KR')}
-
-## 📊 Current Statistics
-
-| Item | Count |
-|------|-------|
-| Total Books | ${libraryData.length - 1} |
-| Unreturned Books | ${unreturned.length} |
-| Return Rate | ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}% |
-
-## 📈 Status Summary
-
-${unreturned.length === 0 ? 
-  '✅ **All books have been returned!** 🎉' : 
-  `⚠️ **${unreturned.length} books are currently unreturned**`}
-
-${unreturned.length > 0 ? `
-
-### 📋 Unreturned Books Details
-- Currently monitoring ${unreturned.length} unreturned items
-- Return rate: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
-- Action required for pending returns
-
-` : ''}
-
----
-*Auto-generated report from Library Management System*  
-*Last updated: ${new Date().toLocaleString('ko-KR')}*`;
-
-    // 간단하고 안전한 마크다운 버전
-    let koreanContent = `# 도서관리 현황
-
-업데이트: ${new Date().toLocaleString('ko-KR')}
-
-## 현재 통계
-
-- 전체 도서: ${libraryData.length - 1}권
-- 미반납 도서: ${unreturned.length}권  
-- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
-
-## 상태 요약
-
-${unreturned.length === 0 ? 
-  '모든 도서가 반납되었습니다! ✅' : 
-  `${unreturned.length}권의 도서가 미반납 상태입니다 ⚠️`}`;
-
-    // 미반납 도서가 있으면 상세 목록 추가
-    if (unreturned.length > 0) {
-      koreanContent += `\n\n### 📋 미반납 도서 목록\n\n`;
-      koreanContent += `| No | 도서코드 | 도서명 | 저자 | 대출자 | 상태 |\n`;
-      koreanContent += `|----|----------|--------|------|--------|------|\n`;
-      
-      // 처음 10권만 표시 (너무 길어지지 않도록)
-      const displayBooks = unreturned.slice(0, 10);
-      displayBooks.forEach((book, index) => {
-        koreanContent += `| ${index + 1} | ${book.bookCode || '-'} | ${book.title || '제목없음'} | ${book.author || '저자미상'} | ${book.borrower || '-'} | ${book.status || '-'} |\n`;
-      });
-      
-      if (unreturned.length > 10) {
-        koreanContent += `\n*... 외 ${unreturned.length - 10}권 더 있음*\n`;
-      }
-      
-      koreanContent += `\n### � 상세 분석\n`;
-      
-      // 연체 도서 개수
-      const overdueCount = unreturned.filter(book => 
-        book.status && book.status.includes('연체')
-      ).length;
-      
-      if (overdueCount > 0) {
-        koreanContent += `- 🚨 **연체 도서**: ${overdueCount}권\n`;
-      }
-      
-      koreanContent += `- 📅 **대출중 도서**: ${unreturned.length - overdueCount}권\n`;
-      koreanContent += `- 🎯 **목표 반납률**: 100%\n`;
-      koreanContent += `- 📈 **현재 반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n`;
-    }
-
-    koreanContent += `\n---\n*도서관리 시스템에서 자동 생성된 보고서*  \n*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
-
-    // 마크다운에서 줄바꿈을 위해 두 개의 공백과 \n 사용
     const lines = [];
     lines.push('# 📚 도서관리 현황');
     lines.push('');
-    lines.push(`**⏰ 업데이트 시간:** ${new Date().toLocaleString('ko-KR')}`);
+    lines.push(`**업데이트:** ${now}`);
     lines.push('');
-    lines.push('## 📊 현재 통계');
-    lines.push('');
-    lines.push(`- 📖 **전체 도서:** ${libraryData.length - 1}권`);
-    lines.push(`- ⚠️ **미반납 도서:** ${unreturned.length}권`);
-    lines.push(`- 📈 **반납률:** ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%`);
-    lines.push('');
-    lines.push('## 🔍 현재 상태');
-    lines.push('');
-    
-    if (unreturned.length === 0) {
-      lines.push('✅ **모든 도서가 반납되었습니다!** 🎉');
-    } else {
-      lines.push(`⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다.**`);
-      lines.push('');
-      lines.push(`### 📋 미반납 도서 목록 (총 ${unreturned.length}권)`);
-      lines.push('');
-      
-      const displayBooks = unreturned.slice(0, 5);
-      displayBooks.forEach((book, i) => {
-        const title = (book.title || '제목없음').substring(0, 30);
-        const borrower = book.borrower || '정보없음';
-        lines.push(`${i+1}. 📖 **${title}** - 👤 ${borrower}  `);
-      });
-      
-      if (unreturned.length > 5) {
-        lines.push('');
-        lines.push(`💡 *... 외 ${unreturned.length - 5}권이 더 있습니다.*`);
-      }
+    lines.push('## 📊 통계');
+    lines.push(`- 전체 도서: ${totalBooks}권`);
+    lines.push(`- 미반납 도서: ${unreturned.length}권`);
+    if (overdueCount > 0) {
+      lines.push(`- 연체 도서: ${overdueCount}권`);
     }
-    
+    lines.push(`- 반납률: ${returnRate}%`);
+    lines.push('');
+
+    if (unreturned.length) {
+      lines.push('## 📕 미반납 도서 목록');
+      lines.push('');
+      lines.push('| 도서코드 | 도서명 | 저자 | 대출자 | 상태 |');
+      lines.push('|----------|--------|------|--------|------|');
+      unreturned.slice(0, 10).forEach((book) => {
+        lines.push(`| ${book.bookCode || '-'} | ${book.title || '-'} | ${book.author || '-'} | ${book.borrower || '-'} | ${book.status || '-'} |`);
+      });
+      if (unreturned.length > 10) {
+        lines.push('');
+        lines.push(`*... 외 ${unreturned.length - 10}권 더 있음*`);
+      }
+    } else {
+      lines.push('## ✅ 모든 도서가 반납되었습니다!');
+      lines.push('🎉 모든 도서가 정상적으로 반납되었습니다.');
+    }
+
     lines.push('');
     lines.push('---');
-    lines.push('');
-    lines.push('🤖 **자동 생성 보고서**  ');
-    lines.push(`📅 **생성 시간:** ${new Date().toLocaleString('ko-KR')}`);
-    
-    const finalContent = lines.join('\n');
+    lines.push('*도서관리 시스템에서 자동 생성됨*');
+    lines.push(`*최종 업데이트: ${now}*`);
 
-    console.log('� Wiki 업데이트 준비:', {
-      type: 'Korean markdown with real data',
-      length: finalContent.length,
-      hasKorean: /[가-힣]/.test(finalContent),
-      totalBooks: libraryData.length - 1,
-      unreturnedBooks: unreturned.length,
-      returnRate: ((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1) + '%',
-      preview: finalContent.substring(0, 200) + '...'
-    });
-    
-    console.log('📋 미반납 도서 샘플:', unreturned.slice(0, 3));
+    return lines.join('\n');
+  }
 
-    // Google Apps Script를 통해 Wiki 업데이트 (POST 방식으로 강제)
-    const result = await window.doorayIntegration.makePostRequest(
-      localStorage.getItem('gas_backend_url'),
-      'updateWiki',
-      { content: finalContent }
-    );
-    
-    if (result && result.success) {
-      testResultDiv.className = 'test-result status-success';
-      
-      let successMessage = `✅ Dooray Wiki 업데이트 완료! 🎉\n\n`;
-      
-      if (unreturned.length > 0) {
-        successMessage += `� **미반납 도서**: ${unreturned.length}권\n`;
-        const overdue = unreturned.filter(book => book.status.includes('연체')).length;
-        if (overdue > 0) {
-          successMessage += `⚠️ **연체 도서**: ${overdue}권\n`;
-        }
-        successMessage += `📊 **반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n`;
-      } else {
-        successMessage += `🎉 **모든 도서 반납 완료!**\n📊 **반납률**: 100% 🏆\n`;
-      }
-      
-      successMessage += `\n🔗 Dooray Wiki에서 확인해보세요!\n`;
-      successMessage += `⏰ 업데이트 시간: ${currentDate}`;
-      
-      testResultDiv.innerHTML = successMessage.replace(/\n/g, '<br>');
-    } else {
-      testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = '❌ Wiki 업데이트 실패: ' + (result?.message || result?.error || '알 수 없는 오류');
-    }
-  } catch (error) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ 업데이트 실패: ' + error.message;
-  }
-}
-
-// 💬 테스트 알림 전송
-async function sendTestNotification() {
-  const testResultDiv = document.getElementById('doorayTestResult');
-  testResultDiv.style.display = 'block';
-  testResultDiv.className = 'test-result';
-  testResultDiv.innerHTML = '🔄 테스트 알림 전송 중...';
-  
-  if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
-    return;
-  }
-  
-  // 테스트용 도서 정보
-  const testBookInfo = {
-    title: '테스트 도서',
-    author: '테스트 저자',
-    borrower: '시스템 관리자',
-    code: 'TEST001'
-  };
-  
-  try {
-    const success = await window.doorayIntegration.notifyBookAction('borrow', testBookInfo);
-    
-    if (success) {
-      testResultDiv.className = 'test-result status-success';
-      testResultDiv.innerHTML = 
-        '✅ 테스트 알림 전송 완료!<br><br>' +
-        '알림 내용: 도서 대출 알림<br>' +
-        '도서명: ' + testBookInfo.title + '<br>' +
-        '대출자: ' + testBookInfo.borrower + '<br>' +
-        '전송 시간: ' + new Date().toLocaleString('ko-KR');
-    } else {
-      testResultDiv.className = 'test-result status-warning';
-      testResultDiv.innerHTML = '⚠️ 알림 전송 실패 (채널 ID 미설정 또는 권한 없음)';
-    }
-  } catch (error) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ 알림 전송 실패: ' + error.message;
-  }
-}
-
-// 💾 Dooray 설정 저장 및 테스트
-async function saveDoorayConfig() {
-  console.log('💾 saveDoorayConfig 함수 실행됨'); // 디버그용
-  
-  const backendUrlInput = document.getElementById('gasBackendUrl');
-  const wikiIdInput = document.getElementById('doorayWikiId');  
-  const pageIdInput = document.getElementById('doorayPageId');
-  const testResultDiv = document.getElementById('doorayTestResult');
-  
-  // 요소 존재 확인
-  if (!backendUrlInput || !wikiIdInput || !pageIdInput || !testResultDiv) {
-    alert('❌ 입력 필드를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
-    console.error('필수 요소를 찾을 수 없음:', {backendUrlInput, wikiIdInput, pageIdInput, testResultDiv});
-    return;
-  }
-  
-  const backendUrl = backendUrlInput.value.trim();
-  const wikiId = wikiIdInput.value.trim();
-  const pageId = pageIdInput.value.trim();
-  
-  testResultDiv.style.display = 'block';
-  testResultDiv.className = 'test-result';
-  testResultDiv.innerHTML = '🔄 설정 저장 및 연결 테스트 중...';
-  
-  // 입력값 검증
-  if (!backendUrl || !wikiId || !pageId) {
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ 모든 필드를 입력해주세요.';
-    return;
-  }
-  
-  try {
-    console.log('💾 localStorage에 설정 저장 중...');
-    
-    // 로컬 스토리지에 저장
-    localStorage.setItem('gas_backend_url', backendUrl);
-    localStorage.setItem('dooray_wiki_id', wikiId);
-    localStorage.setItem('dooray_page_id', pageId);
-    
-    console.log('✅ localStorage 저장 완료');
-    
-    // 현재 설정 업데이트
-    if (!window.DOORAY_CONFIG) {
-      console.error('❌ DOORAY_CONFIG가 정의되지 않음');
-      testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = '❌ 설정 객체를 찾을 수 없습니다. 페이지를 새로고침해주세요.';
+  async function syncLibrary() {
+    const resultDiv = Utils.get('doorayTestResult');
+    if (!resultDiv) {
       return;
     }
-    
-    window.DOORAY_CONFIG.wikiId = wikiId;
-    window.DOORAY_CONFIG.pageId = pageId;
-    
-    console.log('✅ DOORAY_CONFIG 업데이트 완료');
-    
-    // doorayIntegration 인스턴스 재생성
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'test-result';
+    resultDiv.innerHTML = '🔄 Wiki 업데이트 중...';
+
+    if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+      return;
+    }
+
+    const libraryData = getLibrarySnapshot();
+    if (!libraryData) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 도서관 데이터를 찾을 수 없습니다.';
+      return;
+    }
+
     try {
-      window.doorayIntegration = new DoorayIntegration();
-      console.log('✅ DoorayIntegration 인스턴스 생성 완료');
+      const content = buildWikiContent(libraryData);
+      const backendUrl = localStorage.getItem('gas_backend_url');
+      if (!backendUrl) {
+        throw new Error('Google Apps Script 백엔드 URL이 설정되지 않았습니다.');
+      }
+
+      const response = await window.doorayIntegration.makePostRequest(backendUrl, 'updateWiki', { content });
+      if (response && response.success) {
+        resultDiv.className = 'test-result status-success';
+        resultDiv.innerHTML = '✅ Dooray Wiki 업데이트 완료!';
+      } else {
+        resultDiv.className = 'test-result status-error';
+        resultDiv.innerHTML = '❌ Wiki 업데이트 실패: ' + (response?.message || response?.error || '알 수 없는 오류');
+      }
     } catch (error) {
-      testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = '❌ Dooray 연동 모듈 초기화 실패: ' + error.message;
-      console.error('DoorayIntegration 생성 오류:', error);
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 업데이트 실패: ' + error.message;
+    }
+  }
+
+  async function sendTestNotification() {
+    const resultDiv = Utils.get('doorayTestResult');
+    if (!resultDiv) {
       return;
     }
-    
-    // 연결 테스트
-    console.log('🧪 연결 테스트 시작...');
-    const result = await window.doorayIntegration.testConnection();
-    
-    if (result.success) {
-      testResultDiv.className = 'test-result status-success';
-      testResultDiv.innerHTML = `
-        ✅ 설정 저장 및 연결 테스트 성공!
-        
-${result.message}
-Wiki ID: ${result.data.wikiId || 'N/A'}
-페이지 제목: ${result.data.pageTitle || 'N/A'}
-      `;
-      
-      // UI 상태 업데이트
-      updateDoorayButtonStatus(); // 버튼 상태 즉시 업데이트
-      setTimeout(() => {
-        showDoorayModal(); // 모달 새로고침
-      }, 2000);
-      
-    } else {
-      testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = '❌ 연결 실패: ' + result.message + '<br><br>토큰과 ID 정보를 다시 확인해주세요.';
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'test-result';
+    resultDiv.innerHTML = '🔄 테스트 알림 전송 중...';
+
+    if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ Dooray 설정이 없습니다.';
+      return;
     }
-    
-  } catch (error) {
-    console.error('🚨 saveDoorayConfig 오류:', error);
-    testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = '❌ 설정 저장 실패: ' + error.message + '<br><br>브라우저 콘솔(F12)에서 자세한 오류를 확인하세요.';
-    
-    // 상세 오류 정보 출력
-    console.error('오류 상세:', {
-      error: error,
-      stack: error.stack,
-      token: token ? '설정됨' : '비어있음',
-      projectId: projectId ? '설정됨' : '비어있음', 
-      postId: postId ? '설정됨' : '비어있음'
-    });
+
+    try {
+      const success = await window.doorayIntegration.notifyBookAction('borrow', {
+        title: '테스트 도서',
+        author: '테스트 저자',
+        borrower: '시스템 관리자',
+        code: 'TEST001'
+      });
+
+      if (success) {
+        resultDiv.className = 'test-result status-success';
+        resultDiv.innerHTML = '✅ 테스트 알림 전송 완료!';
+      } else {
+        resultDiv.className = 'test-result status-warning';
+        resultDiv.innerHTML = '⚠️ 알림 전송 실패 (채널 ID 미설정 또는 권한 없음)';
+      }
+    } catch (error) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 알림 전송 실패: ' + error.message;
+    }
   }
-}
 
-// 🧪 간단한 테스트 함수
-function testDooraySetup() {
-  console.log('🧪 Dooray 설정 테스트 시작');
-  console.log('DOORAY_CONFIG:', window.DOORAY_CONFIG);
-  console.log('doorayIntegration:', window.doorayIntegration);
-  console.log('localStorage 토큰:', localStorage.getItem('dooray_token'));
-  
-  alert('🧪 테스트 완료! 콘솔(F12)에서 결과를 확인하세요.');
-}
+  async function saveConfig() {
+    const backendUrl = Utils.get('gasBackendUrl')?.value.trim();
+    const wikiId = Utils.get('doorayWikiId')?.value.trim();
+    const pageId = Utils.get('doorayPageId')?.value.trim();
+    const resultDiv = Utils.get('doorayTestResult');
 
-// 🗑️ Dooray 설정 초기화
-function clearDoorayConfig() {
-  if (confirm('Dooray 설정을 모두 삭제하시겠습니까?')) {
+    if (!resultDiv) {
+      return;
+    }
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'test-result';
+    resultDiv.innerHTML = '🔄 설정 저장 및 연결 테스트 중...';
+
+    if (!backendUrl || !wikiId || !pageId) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 모든 필드를 입력해주세요.';
+      return;
+    }
+
+    try {
+      localStorage.setItem('gas_backend_url', backendUrl);
+      localStorage.setItem('dooray_wiki_id', wikiId);
+      localStorage.setItem('dooray_page_id', pageId);
+
+      window.DOORAY_CONFIG.wikiId = wikiId;
+      window.DOORAY_CONFIG.pageId = pageId;
+      window.doorayIntegration = new DoorayIntegration();
+      updateButtonStatus();
+      await testConnection();
+    } catch (error) {
+      resultDiv.className = 'test-result status-error';
+      resultDiv.innerHTML = '❌ 설정 저장 실패: ' + error.message;
+    }
+  }
+
+  function testSetup() {
+    console.log('DOORAY_CONFIG:', window.DOORAY_CONFIG);
+    console.log('doorayIntegration:', window.doorayIntegration);
+    alert('🧪 테스트 완료! 콘솔(F12)에서 결과를 확인하세요.');
+  }
+
+  function clearConfig() {
+    if (!confirm('Dooray 설정을 모두 삭제하시겠습니까?')) {
+      return;
+    }
+
     localStorage.removeItem('gas_backend_url');
     localStorage.removeItem('dooray_wiki_id');
     localStorage.removeItem('dooray_page_id');
-    
+
     window.DOORAY_CONFIG.wikiId = '';
     window.DOORAY_CONFIG.pageId = '';
-    
     window.doorayIntegration = new DoorayIntegration();
-    
-    updateDoorayButtonStatus(); // 버튼 상태 업데이트
+    updateButtonStatus();
     alert('✅ 설정이 삭제되었습니다.');
-    showDoorayModal();
+    showModal();
   }
-}
 
-// 도서 대출/반납 시 자동 알림 (기존 QR 생성 함수 확장)
-const originalGenerateQR = generateQR;
-generateQR = function(bookInfo) {
-  // 기존 QR 생성 기능 실행
-  originalGenerateQR(bookInfo);
-  
-  // Dooray 알림 전송 (비동기로 실행하여 QR 생성에 영향 없음)
-  if (window.doorayIntegration && window.doorayIntegration.isEnabled) {
+  function notifyBookEvent(bookInfo) {
+    if (!window.doorayIntegration || !window.doorayIntegration.isEnabled) {
+      return;
+    }
+
     setTimeout(async () => {
       try {
         const action = bookInfo.status.includes('반납') ? 'return' : 'borrow';
-        const success = await window.doorayIntegration.notifyBookAction(action, bookInfo);
-        
+        const success = await window.doorayIntegration.notifyBookAction(action, {
+          title: bookInfo.title,
+          author: bookInfo.author,
+          borrower: bookInfo.borrower,
+          code: bookInfo.code
+        });
+
         if (success) {
-          console.log(`✅ Dooray 알림 전송 완료: ${action} - ${bookInfo.title}`);
-          // 선택사항: 성공 시 작은 토스트 알림 표시
-          showToast(`📢 Dooray 알림 전송됨: ${bookInfo.title}`);
-        } else {
-          console.warn(`⚠️ Dooray 알림 전송 실패 (설정 확인 필요): ${bookInfo.title}`);
+          Toast.show(`📢 Dooray 알림 전송됨: ${bookInfo.title}`);
         }
       } catch (error) {
-        console.warn('🚨 Dooray 알림 전송 오류:', error);
+        console.warn('Dooray 알림 전송 오류:', error);
       }
-    }, 1000);
+    }, 800);
   }
-};
+
+  return {
+    updateButtonStatus,
+    showModal,
+    closeModal,
+    testConnection,
+    syncLibrary,
+    sendTestNotification,
+    saveConfig,
+    testSetup,
+    clearConfig,
+    notifyBookEvent
+  };
+})();
+
+const LibraryApp = (() => {
+  function showLibrarySection() {
+    Utils.get('librarySection')?.classList.remove('hidden');
+    Utils.get('loanSection')?.classList.add('hidden');
+    Utils.get('btnLibrary')?.classList.add('active');
+    Utils.get('btnLoans')?.classList.remove('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector('#librarySection .table-wrap')?.scrollTo({ top: 0 });
+  }
+
+  function showLoanSection() {
+    Utils.get('loanSection')?.classList.remove('hidden');
+    Utils.get('librarySection')?.classList.add('hidden');
+    Utils.get('btnLoans')?.classList.add('active');
+    Utils.get('btnLibrary')?.classList.remove('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector('#loanSection .table-wrap')?.scrollTo({ top: 0 });
+  }
+
+  function bindNavigation() {
+    Utils.get('btnLoans')?.addEventListener('click', showLoanSection);
+    Utils.get('btnLibrary')?.addEventListener('click', showLibrarySection);
+    Utils.get('btnAddBook')?.addEventListener('click', () => {
+      window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
+    });
+    Utils.get('btnDooraySync')?.addEventListener('click', () => DoorayUI.showModal());
+  }
+
+  function bindFilters() {
+    const borrowedButton = Utils.get('btnBorrowed');
+    const newestButton = Utils.get('btnNewest');
+    const recentButton = Utils.get('btnRecent');
+
+    if (borrowedButton) {
+      borrowedButton.addEventListener('click', () => {
+        showLibrarySection();
+        const active = FilterManager.toggleBorrowed();
+        borrowedButton.classList.toggle('active', active);
+      });
+    }
+
+    if (newestButton) {
+      newestButton.addEventListener('click', () => {
+        showLibrarySection();
+        const active = FilterManager.toggleNewest();
+        newestButton.classList.toggle('active', active);
+        newestButton.innerHTML = active ? '📉 오래된 순으로 보기' : '📈 최신 도서 순으로 보기';
+      });
+    }
+
+    if (recentButton) {
+      const dateIndex = FilterManager.getDateIndex();
+      if (dateIndex === -1) {
+        recentButton.style.opacity = '0.5';
+        recentButton.style.cursor = 'not-allowed';
+        recentButton.title = '등록일 정보가 없어서 사용할 수 없습니다';
+        recentButton.addEventListener('click', () => {
+          alert('📅 등록일 정보가 없어서 최근 30일 필터를 사용할 수 없습니다.\n\nCSV 파일에 "등록일", "일자", "날짜" 등의 컬럼을 추가해주세요.');
+        });
+      } else {
+        recentButton.addEventListener('click', () => {
+          showLibrarySection();
+          const { available, active } = FilterManager.toggleRecent();
+          if (available) {
+            recentButton.classList.toggle('active', !!active);
+          }
+        });
+      }
+    }
+  }
+
+  function calculateLibraryStatus(books, library) {
+    const bookHeader = books[0].map(Utils.norm);
+    const bookDateIdx = Utils.findColIndex(bookHeader, ['등록일', '대출일', '일자']);
+    const bookCodeIdx = Utils.findColIndex(bookHeader, ['코드', '코드번호']);
+    const bookStatusIdx = Utils.findColIndex(bookHeader, ['상태', '대출여부']);
+    const bookUserIdx = Utils.findColIndex(bookHeader, ['대여자', '대출자']);
+
+    const latestByCode = {};
+    for (let i = 1; i < books.length; i++) {
+      const date = Utils.norm(books[i][bookDateIdx]);
+      const code = Utils.norm(books[i][bookCodeIdx]);
+      const status = Utils.norm(books[i][bookStatusIdx]);
+      const borrower = Utils.norm(books[i][bookUserIdx]);
+      if (!code) continue;
+      if (!latestByCode[code]) {
+        latestByCode[code] = { status: '', borrower: '', lastReturn: '' };
+      }
+      if (status.includes('반납')) {
+        latestByCode[code].lastReturn = date;
+      }
+      latestByCode[code].status = status;
+      latestByCode[code].borrower = borrower;
+    }
+
+    const libraryHeader = library[0].map(Utils.norm);
+    const codeIdx = Utils.findColIndex(libraryHeader, ['코드', '코드번호']);
+    let statusIdx = Utils.findColIndex(libraryHeader, ['상태', '대출여부']);
+    let borrowerIdx = Utils.findColIndex(libraryHeader, ['대여자', '대출자']);
+
+    if (statusIdx === -1) {
+      library[0].push('대출여부');
+      statusIdx = library[0].length - 1;
+    }
+
+    if (borrowerIdx === -1) {
+      library[0].push('대출자');
+      borrowerIdx = library[0].length - 1;
+    }
+
+    for (let i = 1; i < library.length; i++) {
+      const code = Utils.norm(library[i][codeIdx]);
+      const record = latestByCode[code];
+      if (!record) {
+        library[i][statusIdx] = '';
+        library[i][borrowerIdx] = '';
+        continue;
+      }
+
+      if (record.status.includes('반납')) {
+        library[i][statusIdx] = '반납';
+        library[i][borrowerIdx] = '';
+        continue;
+      }
+
+      library[i][borrowerIdx] = record.borrower || '';
+      const loanRow = books.find((row) => Utils.norm(row[bookCodeIdx]) === code && !row[bookStatusIdx].includes('반납'));
+      const loanDate = loanRow ? loanRow[bookDateIdx] : '';
+      const loanStatus = LoanStatus.calculate(loanDate, record.status);
+      library[i][statusIdx] = loanStatus.displayText;
+      library[i]._statusInfo = loanStatus;
+    }
+
+    return library;
+  }
+
+  async function init() {
+    try {
+      DoorayUI.updateButtonStatus();
+      bindNavigation();
+
+      const [books, library] = await Promise.all([
+        CSVService.load('books.csv'),
+        CSVService.load('library.csv')
+      ]);
+
+      window.booksData = books;
+      TableManager.render(books, 'loanTable');
+
+      const processedLibrary = calculateLibraryStatus(books, library);
+      TableManager.render(processedLibrary, 'libraryTable', true);
+
+      FilterManager.init(processedLibrary);
+      FilterManager.setOriginalData(processedLibrary);
+      FilterManager.bindSearch('searchLoans', 'loanTable');
+      FilterManager.bindSearch('searchLibrary', 'libraryTable');
+      bindFilters();
+    } catch (error) {
+      console.error('초기화 실패:', error);
+      Toast.show('🚨 데이터를 불러오는 중 오류가 발생했습니다. 관리자에게 문의해주세요.');
+    }
+  }
+
+  return { init };
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  LibraryApp.init();
+});
+
+window.showBookPreview = (code, title, author) => BookPreviewModal.show(code, title, author);
+window.switchTab = (tabName) => BookPreviewModal.switchTab(tabName);
+window.closeBookPreview = () => BookPreviewModal.close();
+window.showHistory = (code, title) => HistoryModal.show(code, title);
+window.closeHistory = () => HistoryModal.close();
+window.showDoorayModal = () => DoorayUI.showModal();
+window.closeDoorayModal = () => DoorayUI.closeModal();
+window.testDoorayConnection = () => DoorayUI.testConnection();
+window.syncLibraryToWiki = () => DoorayUI.syncLibrary();
+window.sendTestNotification = () => DoorayUI.sendTestNotification();
+window.saveDoorayConfig = () => DoorayUI.saveConfig();
+window.testDooraySetup = () => DoorayUI.testSetup();
+window.clearDoorayConfig = () => DoorayUI.clearConfig();
+
 </script>
 </body>
 </html>
