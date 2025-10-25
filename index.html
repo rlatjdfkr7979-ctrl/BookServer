@@ -1784,8 +1784,19 @@ async function syncLibraryToWiki() {
     
     wikiContent += `## 🔄 업데이트 정보\n`;
     wikiContent += `- **업데이트 시간**: ${currentDate}\n`;
-    wikiContent += `- **데이터 소스**: ${window.allTableData.fileName || '도서관리 시스템'}\n`;
-    wikiContent += `- **업데이트 방법**: 자동 동기화\n\n`;
+    
+    // 안전한 데이터 소스 확인
+    let dataSource = '도서관리 시스템';
+    try {
+      if (window.allTableData && window.allTableData.fileName) {
+        dataSource = window.allTableData.fileName;
+      }
+    } catch (e) {
+      // 오류 무시하고 기본값 사용
+    }
+    
+    wikiContent += `- **데이터 소스**: ${dataSource}\n`;
+    wikiContent += `- **업데이트 방법**: 실시간 테이블 데이터 동기화\n\n`;
     wikiContent += `---\n`;
     wikiContent += `*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
 
