@@ -2149,29 +2149,40 @@ ${unreturned.length === 0 ?
 
     koreanContent += `\n---\n*도서관리 시스템에서 자동 생성된 보고서*  \n*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
 
-    // 간단하고 안전한 버전으로 교체
-    const finalContent = `# 도서관리 현황
+    // 마크다운 줄바꿈을 제대로 처리하고 이모지 추가
+    const finalContent = `# 📚 도서관리 현황
 
-업데이트: ${new Date().toLocaleString('ko-KR')}
+**⏰ 업데이트 시간:** ${new Date().toLocaleString('ko-KR')}
 
-## 통계
-- 전체 도서: ${libraryData.length - 1}권
-- 미반납 도서: ${unreturned.length}권
-- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+## 📊 현재 통계
 
-## 상태
-${unreturned.length === 0 ? '모든 도서가 반납되었습니다!' : `${unreturned.length}권의 도서가 미반납 상태입니다.`}
+- 📖 **전체 도서:** ${libraryData.length - 1}권
+- ⚠️ **미반납 도서:** ${unreturned.length}권  
+- 📈 **반납률:** ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+
+## 🔍 현재 상태
+
+${unreturned.length === 0 ? 
+  '✅ **모든 도서가 반납되었습니다!** 🎉' : 
+  `⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다.**`}
 
 ${unreturned.length > 0 && unreturned.length <= 3 ? `
-### 미반납 도서
-${unreturned.map((book, i) => `${i+1}. ${(book.title||'제목없음').substring(0,30)} - ${book.borrower||'정보없음'}`).join('\n')}` : 
+
+### 📋 미반납 도서 목록
+
+${unreturned.map((book, i) => `${i+1}. 📖 **${(book.title||'제목없음').substring(0,35)}** - 👤 ${book.borrower||'정보없음'}`).join('\n')}` : 
 unreturned.length > 3 ? `
-### 미반납 도서 (${unreturned.length}권)
-${unreturned.slice(0,3).map((book, i) => `${i+1}. ${(book.title||'제목없음').substring(0,30)} - ${book.borrower||'정보없음'}`).join('\n')}
-... 외 ${unreturned.length-3}권 더` : ''}
+
+### 📋 미반납 도서 목록 (총 ${unreturned.length}권)
+
+${unreturned.slice(0,3).map((book, i) => `${i+1}. 📖 **${(book.title||'제목없음').substring(0,35)}** - 👤 ${book.borrower||'정보없음'}`).join('\n')}
+
+💡 *... 외 ${unreturned.length-3}권이 더 있습니다.*` : ''}
 
 ---
-자동 생성: ${new Date().toLocaleString('ko-KR')}`;
+
+🤖 **자동 생성 보고서**  
+📅 **생성 시간:** ${new Date().toLocaleString('ko-KR')}`;
 
     console.log('� Wiki 업데이트 준비:', {
       type: 'Korean markdown with real data',
