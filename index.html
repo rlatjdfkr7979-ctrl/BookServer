@@ -103,7 +103,37 @@ function renderTable(rows,id,withQR=false){
   const header=rows[0];
   const table=document.getElementById(id);
   const finalHeader=withQR?[...header,'QR 생성']:header;
-  table.innerHTML='<tr>'+finalHeader.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  
+  // 헤더 생성 (정렬 기능 포함)
+  const headerRow=document.createElement('tr');
+  finalHeader.forEach((h,idx)=>{
+    const th=document.createElement('th');
+    th.textContent=h;
+    
+    // QR 생성 열이 아닌 경우에만 정렬 기능 추가
+    if(idx<header.length){
+      th.style.cursor='pointer';
+      th.style.userSelect='none';
+      th.onclick=()=>sortTable(rows,id,idx,withQR);
+      
+      // 정렬 표시를 위한 스타일
+      th.addEventListener('mouseenter',()=>{
+        if(!th.textContent.includes('↑')&&!th.textContent.includes('↓')){
+          th.style.background='#e2e8f0';
+        }
+      });
+      th.addEventListener('mouseleave',()=>{
+        if(!th.textContent.includes('↑')&&!th.textContent.includes('↓')){
+          th.style.background='#f1f5f9';
+        }
+      });
+    }
+    headerRow.appendChild(th);
+  });
+  
+  table.innerHTML='';
+  table.appendChild(headerRow);
+  
   for(let i=1;i<rows.length;i++){
     const tr=document.createElement('tr');
     tr.innerHTML=rows[i].map((c,j)=>`<td>${c}</td>`).join('');
@@ -128,6 +158,63 @@ function renderTable(rows,id,withQR=false){
       tdQR.appendChild(btn);tr.appendChild(tdQR);
     }
     table.appendChild(tr);
+  }
+}
+
+/* ====== 테이블 정렬 ====== */
+let sortState={}; // 각 테이블의 정렬 상태 저장
+function sortTable(originalRows,tableId,colIdx,withQR=false){
+  const table=document.getElementById(tableId);
+  const rows=Array.from(table.querySelectorAll('tr')).slice(1); // 헤더 제외한 데이터 행들
+  const header=originalRows[0];
+  
+  // 정렬 상태 확인 (기본: 오름차순)
+  const sortKey=`${tableId}_${colIdx}`;
+  const isAsc=!sortState[sortKey]; // 현재 상태의 반대로 설정
+  sortState[sortKey]=isAsc;
+  
+  // 모든 헤더에서 정렬 표시 제거
+  table.querySelectorAll('th').forEach(th=>{
+    th.textContent=th.textContent.replace(/\s*[↑↓]\s*/g,'');
+    th.style.background='#f1f5f9';
+  });
+  
+  // 현재 정렬 열에 표시 추가
+  const currentTh=table.querySelectorAll('th')[colIdx];
+  currentTh.textContent+=isAsc?' ↑':' ↓';
+  currentTh.style.background='#dbeafe';
+  
+  // 데이터 정렬
+  rows.sort((a,b)=>{
+    const aVal=a.cells[colIdx]?.textContent||'';
+    const bVal=b.cells[colIdx]?.textContent||'';
+    
+    // 숫자인지 확인
+    const aNum=parseFloat(aVal.replace(/[^\d.-]/g,''));
+    const bNum=parseFloat(bVal.replace(/[^\d.-]/g,''));
+    
+    let result;
+    if(!isNaN(aNum)&&!isNaN(bNum)){
+      result=aNum-bNum; // 숫자 정렬
+    }else{
+      result=aVal.localeCompare(bVal,'ko',{numeric:true}); // 문자열 정렬 (한국어 지원)
+    }
+    
+    return isAsc?result:-result;
+  });
+  
+  // 정렬된 행들을 다시 테이블에 추가
+  rows.forEach(row=>table.appendChild(row));
+  
+  // 정렬 후 연체 색상 다시 적용 (도서목록의 경우)
+  if(withQR){
+    const statusIdx=findColIndex(header,['상태','대출여부']);
+    rows.forEach(tr=>{
+      const td=tr.querySelectorAll('td')[statusIdx];
+      if(td&&td.textContent.includes('연체')){
+        tr.classList.add('overdue');
+      }
+    });
   }
 }
 
