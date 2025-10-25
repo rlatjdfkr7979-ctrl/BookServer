@@ -332,6 +332,14 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
   const btnBorrowed=document.getElementById('btnBorrowed');
   let borrowedOn=false;
   btnBorrowed.onclick=()=>{
+    // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
+    if(!document.getElementById('librarySection').classList.contains('hidden')==false){
+      document.getElementById('librarySection').classList.remove('hidden');
+      document.getElementById('loanSection').classList.add('hidden');
+      document.getElementById('btnLibrary').classList.add('active');
+      document.getElementById('btnLoans').classList.remove('active');
+    }
+    
     borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
     const header=library[0];
     const statusIdx=findColIndex(header,['상태','대출여부']);
@@ -349,6 +357,14 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
   let newestOn=false;
   let originalLibraryData=[...library]; // 원본 데이터 보존
   btnNewest.onclick=()=>{
+    // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
+    if(!document.getElementById('librarySection').classList.contains('hidden')==false){
+      document.getElementById('librarySection').classList.remove('hidden');
+      document.getElementById('loanSection').classList.add('hidden');
+      document.getElementById('btnLibrary').classList.add('active');
+      document.getElementById('btnLoans').classList.remove('active');
+    }
+    
     newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
     
     if(newestOn){
@@ -418,6 +434,14 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
   }else{
     // 등록일 컬럼이 있으면 정상 동작
     btnRecent.onclick=()=>{
+      // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
+      if(!document.getElementById('librarySection').classList.contains('hidden')==false){
+        document.getElementById('librarySection').classList.remove('hidden');
+        document.getElementById('loanSection').classList.add('hidden');
+        document.getElementById('btnLibrary').classList.add('active');
+        document.getElementById('btnLoans').classList.remove('active');
+      }
+      
       recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
       
       const trs=document.querySelectorAll('#libraryTable tr');
