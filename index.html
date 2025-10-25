@@ -32,6 +32,7 @@
   <button id="btnLoans" class="active">📘 대출 현황</button>
   <button id="btnLibrary">📗 전체 도서목록</button>
   <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
+  <button id="sortBtn" style="background:#475569;">⬇️ 최신순 보기</button>
   <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
 </nav>
 
@@ -52,26 +53,24 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
 
 <script>
-/* ====== 0) 환경 설정 (Python 코드와 동일한 폼 entry) ====== */
+/* ====== 0) 환경 설정 ====== */
 const FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
 const ENTRY_IDS = {
-  code:   "entry.32105598",   // 도서코드
-  title:  "entry.1234176416", // 도서명
-  author: "entry.628826984",  // 저자명
-  status: "entry.12641564",   // 상태(대출/반납)
-  renter: "entry.615776096"   // 대여자명
+  code:   "entry.32105598",
+  title:  "entry.1234176416",
+  author: "entry.628826984",
+  status: "entry.12641564",
+  renter: "entry.615776096"
 };
 
-/* ====== 1) 유틸 ====== */
-const norm = s => String(s||'').replace(/\uFEFF/g,'').trim();           // BOM 제거 + 트림
-const normHead = s => norm(s).replace(/\s/g,'');                         // 헤더 비교용(공백 제거)
+/* ====== 유틸 ====== */
+const norm = s => String(s||'').replace(/\uFEFF/g,'').trim();
+const normHead = s => norm(s).replace(/\s/g,'');
 const includesAny = (h, keys) => keys.some(k => normHead(h).includes(k));
-function findColIndex(header, candidates){                               
-  return header.findIndex(h => includesAny(h, candidates));
-}
+function findColIndex(header, candidates){ return header.findIndex(h => includesAny(h, candidates)); }
 
-/* ====== 2) CSV 로드 ====== */
+/* ====== CSV 로드 ====== */
 async function loadCSV(file){
   const res = await fetch(file + '?v=' + Date.now());
   if(!res.ok) throw new Error(file + ' 로드 실패');
@@ -79,25 +78,21 @@ async function loadCSV(file){
   return Papa.parse(text.trim(), { skipEmptyLines:true }).data;
 }
 
-/* ====== 3) 표 렌더링 ====== */
+/* ====== 표 렌더링 ====== */
 function renderTable(rows, id, withQR=false){
   const header = rows[0];
   const table = document.getElementById(id);
   const finalHeader = withQR ? [...header, 'QR 생성'] : header;
   table.innerHTML = '<tr>'+finalHeader.map(h=>`<th>${h}</th>`).join('')+'</tr>';
-
   for(let i=1;i<rows.length;i++){
     const tr = document.createElement('tr');
     tr.innerHTML = rows[i].map(c=>`<td>${c}</td>`).join('');
-
     if(withQR){
-      // 컬럼 값 추출(헤더 변화 대응)
       const code   = rows[i][findColIndex(header, ['코드','코드번호'])] || '';
       const title  = rows[i][findColIndex(header, ['제목','도서명'])]   || '';
       const author = rows[i][findColIndex(header, ['지은이','저자'])]   || '';
       const status = rows[i][findColIndex(header, ['상태','대출여부'])] || '';
       const renter = rows[i][findColIndex(header, ['대출자','대여자'])] || '';
-
       const tdQR = document.createElement('td');
       const btn = document.createElement('button');
       btn.className = 'qr-btn';
@@ -110,7 +105,7 @@ function renderTable(rows, id, withQR=false){
   }
 }
 
-/* ====== 4) 검색(디바운싱) ====== */
+/* ====== 검색 ====== */
 function addSearch(inputId, tableId){
   const input = document.getElementById(inputId);
   let timer;
@@ -128,14 +123,12 @@ function addSearch(inputId, tableId){
   });
 }
 
-/* ====== 5) QR 생성 ====== */
+/* ====== QR 생성 ====== */
 function generateQR({code, title, author, renter, status}){
-  // Python과 동일한 매핑(정확 URL 인코딩)
   const statusEncoded = (status.includes('반납'))
     ? "%EB%B0%98%EB%82%A9"
     : (status.includes('대출') || status.includes('대여'))
       ? "%EB%8C%80%EC%B6%9C" : "";
-
   const url =
     `${FORM_URL}?usp=pp_url` +
     `&${ENTRY_IDS.code}=${encodeURIComponent(code)}` +
@@ -143,7 +136,6 @@ function generateQR({code, title, author, renter, status}){
     `&${ENTRY_IDS.author}=${encodeURIComponent(author)}` +
     `&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}` +
     `&${ENTRY_IDS.status}=${statusEncoded}`;
-
   const layer = document.createElement('div');
   layer.style = `position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
   layer.innerHTML = `
@@ -157,12 +149,7 @@ function generateQR({code, title, author, renter, status}){
       </div>
     </div>`;
   document.body.appendChild(layer);
-
-  new QRCode(layer.querySelector('#qrbox'), {
-    text: url, width: 220, height: 220,
-    colorDark:"#000", colorLight:"#fff", correctLevel: QRCode.CorrectLevel.H
-  });
-
+  new QRCode(layer.querySelector('#qrbox'), {text: url, width: 220, height: 220,colorDark:"#000", colorLight:"#fff", correctLevel: QRCode.CorrectLevel.H});
   layer.querySelector('#qrClose').onclick = ()=>layer.remove();
   layer.querySelector('#qrDown').onclick = ()=>{
     const img = layer.querySelector('#qrbox img');
@@ -171,72 +158,55 @@ function generateQR({code, title, author, renter, status}){
   };
 }
 
-/* ====== 6) 메인 실행: 이력 반영 + QR ====== */
-Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
-  /* --- 대출현황 테이블 먼저 그리기 --- */
-  renderTable(books, 'loanTable');
+/* ====== 메인 실행 ====== */
+let libraryData = [];
+let reversed = true;
 
-  /* --- books.csv(이력) → 코드별 최신 상태/최근반납일 구하기 --- */
+Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library])=>{
+  renderTable(books, 'loanTable');
   const bh = books[0].map(norm);
   const bDateIdx   = findColIndex(bh, ['등록일','대출일','일자']);
   const bCodeIdx   = findColIndex(bh, ['코드','코드번호']);
   const bStatusIdx = findColIndex(bh, ['상태','대출여부']);
   const bUserIdx   = findColIndex(bh, ['대여자','대출자']);
-
-  const latestByCode = {}; // {code:{status, borrower, lastReturn}}
+  const latestByCode = {};
   for(let i=1;i<books.length;i++){
     const date = norm(books[i][bDateIdx]);
     const code = norm(books[i][bCodeIdx]);
     const status = norm(books[i][bStatusIdx]);
     const borrower = norm(books[i][bUserIdx]);
     if(!code) continue;
-
     if(!latestByCode[code]) latestByCode[code] = {status:'', borrower:'', lastReturn:''};
     if(status.includes('반납')) latestByCode[code].lastReturn = date;
-    // 이력이 아래로 누적된다고 가정 → "마지막으로 본 값"이 최신
     latestByCode[code].status   = status;
     latestByCode[code].borrower = borrower;
   }
-
-  /* --- library.csv에 최신 상태 반영 (+최근반납일 열 자동 추가) --- */
   const lh = library[0].map(norm);
-  const lCodeIdx   = findColIndex(lh, ['코드','코드번호']);
-  let   lStatusIdx = findColIndex(lh, ['상태','대출여부']);
-  let   lUserIdx   = findColIndex(lh, ['대여자','대출자']);
-  let   lRetIdx    = findColIndex(lh, ['최근반납일','반납일']);
-
+  const lCodeIdx = findColIndex(lh, ['코드','코드번호']);
+  let lStatusIdx = findColIndex(lh, ['상태','대출여부']);
+  let lUserIdx   = findColIndex(lh, ['대여자','대출자']);
+  let lRetIdx    = findColIndex(lh, ['최근반납일','반납일']);
   if(lStatusIdx === -1){ library[0].push('대출여부'); lStatusIdx = library[0].length-1; }
   if(lUserIdx   === -1){ library[0].push('대출자');   lUserIdx   = library[0].length-1; }
   if(lRetIdx    === -1){ library[0].push('최근반납일');lRetIdx    = library[0].length-1; }
-
   for(let i=1;i<library.length;i++){
     const code = norm(library[i][lCodeIdx]);
     const rec  = latestByCode[code];
-    if(!rec){
-      library[i][lStatusIdx] = '';
-      library[i][lUserIdx]   = '';
-      library[i][lRetIdx]    = '';
-      continue;
-    }
+    if(!rec){ library[i][lStatusIdx]='';library[i][lUserIdx]='';library[i][lRetIdx]='';continue; }
     if(rec.status.includes('반납')){
-      library[i][lStatusIdx] = '반납';
-      library[i][lUserIdx]   = '';
-      library[i][lRetIdx]    = rec.lastReturn || '';
+      library[i][lStatusIdx]='반납';library[i][lUserIdx]='';library[i][lRetIdx]=rec.lastReturn||'';
     }else{
-      library[i][lStatusIdx] = rec.status || '대출';
-      library[i][lUserIdx]   = rec.borrower || '';
-      library[i][lRetIdx]    = rec.lastReturn || '';
+      library[i][lStatusIdx]=rec.status||'대출';library[i][lUserIdx]=rec.borrower||'';library[i][lRetIdx]=rec.lastReturn||'';
     }
   }
+  libraryData = library; // 전체 데이터 저장
+  const header = library[0];
+  const reversedRows = [header, ...library.slice(1).reverse()];
+  renderTable(reversedRows, 'libraryTable', true);
 
-  /* --- 반영된 library로 렌더링(여기에 QR 버튼 포함) --- */
-  renderTable(library, 'libraryTable', true);
-
-  /* --- 검색 연결 --- */
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
 
-  /* --- "대출 중만 보기" 필터 --- */
   const btn = document.getElementById('btnBorrowed');
   let on = false;
   btn.onclick = ()=>{
@@ -253,7 +223,17 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   };
 });
 
-/* ====== 7) 탭 전환 ====== */
+/* ====== 최신순/오래된순 토글 ====== */
+document.getElementById('sortBtn').onclick = ()=>{
+  if(!libraryData.length) return;
+  const header = libraryData[0];
+  reversed = !reversed;
+  const rows = reversed ? [header, ...libraryData.slice(1).reverse()] : libraryData;
+  renderTable(rows, 'libraryTable', true);
+  document.getElementById('sortBtn').textContent = reversed ? '⬆️ 오래된 순 보기' : '⬇️ 최신순 보기';
+};
+
+/* ====== 탭 전환 ====== */
 document.getElementById('btnLoans').onclick = ()=>{
   document.getElementById('loanSection').classList.remove('hidden');
   document.getElementById('librarySection').classList.add('hidden');
@@ -269,7 +249,6 @@ document.getElementById('btnLibrary').onclick = ()=>{
 document.getElementById('btnAddBook').onclick = ()=>{
   window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
 };
-
 </script>
 </body>
 </html>
