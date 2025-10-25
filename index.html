@@ -272,50 +272,65 @@ class DoorayIntegration {
     }
   }
 
-  // 📡 Google Apps Script 백엔드를 통한 API 요청
-  async makeApiRequest(action, additionalParams = {}) {
+  // 📡 Google Apps Script 백엔드를 통한 API 요청 (JSONP 방식으로 CORS 우회)
+  makeApiRequest(action, additionalParams = {}) {
     if (!this.isEnabled) {
       console.warn('⚠️ Dooray API가 설정되지 않음');
-      return null;
+      return Promise.resolve(null);
     }
 
     // Google Apps Script 웹앱 URL (사용자가 설정해야 함)
     const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
     
     if (!GAS_BACKEND_URL) {
-      throw new Error('Google Apps Script 백엔드 URL이 설정되지 않았습니다. 설정에서 URL을 입력해주세요.');
+      return Promise.reject(new Error('Google Apps Script 백엔드 URL이 설정되지 않았습니다. 설정에서 URL을 입력해주세요.'));
     }
 
-    try {
+    return new Promise((resolve, reject) => {
+      // JSONP 콜백 함수명 생성
+      const callbackName = 'jsonp_callback_' + Date.now();
+      
+      // 글로벌 콜백 함수 등록
+      window[callbackName] = function(data) {
+        // 콜백 정리
+        delete window[callbackName];
+        document.head.removeChild(script);
+        
+        if (data.error) {
+          reject(new Error(data.error));
+        } else {
+          resolve(data);
+        }
+      };
+      
+      // 스크립트 태그로 JSONP 요청
+      const script = document.createElement('script');
       const params = new URLSearchParams({
         action: action,
         wikiId: this.config.wikiId,
         pageId: this.config.pageId,
+        callback: callbackName,
         ...additionalParams
       });
-
-      const response = await fetch(`${GAS_BACKEND_URL}?${params}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
+      
+      script.src = `${GAS_BACKEND_URL}?${params}`;
+      script.onerror = function() {
+        delete window[callbackName];
+        document.head.removeChild(script);
+        reject(new Error('Google Apps Script 요청 실패'));
+      };
+      
+      document.head.appendChild(script);
+      
+      // 타임아웃 설정 (30초)
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          document.head.removeChild(script);
+          reject(new Error('요청 시간 초과'));
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`백엔드 요청 실패: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      return result;
-    } catch (error) {
-      console.error('🚨 백엔드 API 오류:', error);
-      throw error;
-    }
+      }, 30000);
+    });
   }
 
   // 📊 Wiki 업데이트 - 도서 현황을 실시간으로 Wiki에 반영
