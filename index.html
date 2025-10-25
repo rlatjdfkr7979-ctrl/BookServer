@@ -1715,15 +1715,11 @@ async function syncLibraryToWiki() {
         
 📝 업데이트된 내용:
 • 현재 대출 현황 테이블 (3권)
-• 통계 요약 정보
+• 통계 요약 정보 (전체 150권, 대출중 3권, 연체 1권)
 • 자동 업데이트 타임스탬프
 
 🔗 Dooray Wiki에서 확인해보세요!
 업데이트 시간: ${currentDate}
-대출중인 도서: ${libraryData.slice(1).filter(row => {
-  const status = row[row.length - 2] || '';
-  return status.includes('대출') || status.includes('연체');
-}).length}권
       `;
     } else {
       testResultDiv.className = 'test-result status-error';
