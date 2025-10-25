@@ -370,15 +370,9 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     }
     
     borrowedOn=!borrowedOn;btnBorrowed.classList.toggle('active',borrowedOn);
-    const header=library[0];
-    const statusIdx=findColIndex(header,['상태','대출여부']);
-    const trs=document.querySelectorAll('#libraryTable tr');
-    for(let i=1;i<trs.length;i++){
-      const td=trs[i].querySelectorAll('td')[statusIdx];
-      const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
-      trs[i].style.display=(borrowedOn&&!isBorrowed)?'none':'';
-      trs[i].classList.toggle('borrowed',isBorrowed);
-    }
+    
+    // 모든 필터 재적용
+    applyAllFilters();
   };
 
   // ✅ 최신 도서 순 필터 (library.csv 데이터 역순 출력)
@@ -398,54 +392,87 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     
     newestOn=!newestOn;btnNewest.classList.toggle('active',newestOn);
     
+    // 버튼 텍스트 변경
     if(newestOn){
-      // 데이터 행들을 역순으로 정렬 (헤더는 그대로)
-      const reversedLibrary=[library[0],...library.slice(1).reverse()];
-      renderTable(reversedLibrary,'libraryTable',true);
-      
-      // 연체 색상 다시 적용
-      const trs=document.querySelectorAll('#libraryTable tr');
-      const statusIdx=findColIndex(library[0],['상태','대출여부']);
-      for(let i=1;i<trs.length;i++){
-        const td=trs[i].querySelectorAll('td')[statusIdx];
-        if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
-      }
-      
-      // 대출 중 필터가 활성화되어 있다면 다시 적용
-      if(borrowedOn){
-        for(let i=1;i<trs.length;i++){
-          const td=trs[i].querySelectorSAll('td')[statusIdx];
-          const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
-          trs[i].style.display=(!isBorrowed)?'none':'';
-          trs[i].classList.toggle('borrowed',isBorrowed);
+      btnNewest.innerHTML='📉 오래된 순으로 보기';
+    }else{
+      btnNewest.innerHTML='📈 최신 도서 순으로 보기';
+    }
+    
+    // 현재 표시된 행들을 수집 (필터링된 상태 고려)
+    const currentRows=[];
+    const trs=document.querySelectorAll('#libraryTable tr');
+    
+    // 헤더 추가
+    currentRows.push(library[0]);
+    
+    // 현재 보이는 데이터 행들만 수집
+    for(let i=1;i<trs.length;i++){
+      if(trs[i].style.display!=='none'){
+        const rowData=[];
+        for(let j=0;j<trs[i].cells.length-1;j++){ // QR 컬럼 제외
+          rowData.push(trs[i].cells[j].textContent);
         }
+        currentRows.push(rowData);
       }
+    }
+    
+    if(newestOn){
+      // 현재 필터된 데이터를 역순으로 정렬 (헤더는 그대로)
+      const reversedRows=[currentRows[0],...currentRows.slice(1).reverse()];
+      renderTable(reversedRows,'libraryTable',true);
     }else{
       // 원본 순서로 복원
       renderTable(originalLibraryData,'libraryTable',true);
-      
-      // 연체 색상 다시 적용
-      const trs=document.querySelectorAll('#libraryTable tr');
-      const statusIdx=findColIndex(library[0],['상태','대출여부']);
-      for(let i=1;i<trs.length;i++){
-        const td=trs[i].querySelectorAll('td')[statusIdx];
-        if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
-      }
-      
-      // 대출 중 필터가 활성화되어 있다면 다시 적용
-      if(borrowedOn){
-        for(let i=1;i<trs.length;i++){
-          const td=trs[i].querySelectorAll('td')[statusIdx];
-          const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
-          trs[i].style.display=(!isBorrowed)?'none':'';
-          trs[i].classList.toggle('borrowed',isBorrowed);
-        }
-      }
     }
+    
+    // 모든 필터 재적용
+    applyAllFilters();
     
     // 검색 기능 다시 바인딩
     addSearch('searchLibrary','libraryTable');
   };
+  
+  // 모든 필터를 재적용하는 함수
+  function applyAllFilters(){
+    const trs=document.querySelectorAll('#libraryTable tr');
+    const statusIdx=findColIndex(library[0],['상태','대출여부']);
+    
+    for(let i=1;i<trs.length;i++){
+      const tr=trs[i];
+      let shouldShow=true;
+      
+      // 연체 색상 적용
+      const statusTd=tr.querySelectorAll('td')[statusIdx];
+      if(statusTd&&statusTd.textContent.includes('연체')){
+        tr.classList.add('overdue');
+      }
+      
+      // 대출 중 필터 적용
+      if(borrowedOn){
+        const isBorrowed=statusTd&&/(대출|대여|연체)/.test(statusTd.textContent);
+        if(!isBorrowed){
+          shouldShow=false;
+        }else{
+          tr.classList.add('borrowed');
+        }
+      }
+      
+      // 30일 필터 적용
+      if(recentOn&&dateIdx!==-1){
+        const dateText=tr.querySelectorAll('td')[dateIdx]?.textContent||'';
+        const bookDate=new Date(dateText);
+        const now=new Date();
+        const thirtyDaysAgo=new Date(now.getTime()-30*24*60*60*1000);
+        const isRecent=!isNaN(bookDate)&&bookDate>=thirtyDaysAgo;
+        if(!isRecent){
+          shouldShow=false;
+        }
+      }
+      
+      tr.style.display=shouldShow?'':'none';
+    }
+  }
 
   // ✅ 최근 30일 도서만 보기 필터 (등록일 컬럼 확인)
   const btnRecent=document.getElementById('btnRecent');
@@ -477,38 +504,8 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       
       recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
       
-      const trs=document.querySelectorAll('#libraryTable tr');
-      const now=new Date();
-      const thirtyDaysAgo=new Date(now.getTime()-30*24*60*60*1000);
-      
-      for(let i=1;i<trs.length;i++){
-        const tr=trs[i];
-        
-        if(recentOn){
-          // 등록일 확인
-          const dateText=tr.querySelectorAll('td')[dateIdx]?.textContent||'';
-          const bookDate=new Date(dateText);
-          const isRecent=!isNaN(bookDate)&&bookDate>=thirtyDaysAgo;
-          tr.style.display=isRecent?'':'none';
-        }else{
-          // 필터 해제 - 모든 행 표시
-          tr.style.display='';
-        }
-      }
-      
-      // 다른 필터와의 호환성을 위해 대출 중 필터가 활성화된 경우 재적용
-      if(borrowedOn){
-        const statusIdx=findColIndex(library[0],['상태','대출여부']);
-        for(let i=1;i<trs.length;i++){
-          if(trs[i].style.display!=='none'){ // 30일 필터를 통과한 경우에만
-            const td=trs[i].querySelectorAll('td')[statusIdx];
-            const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
-            if(!isBorrowed){
-              trs[i].style.display='none';
-            }
-          }
-        }
-      }
+      // 모든 필터 재적용
+      applyAllFilters();
     };
   }
 });
