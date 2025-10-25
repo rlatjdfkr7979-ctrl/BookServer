@@ -2050,25 +2050,83 @@ ${unreturned.length === 0 ?
 ---
 Updated: ${new Date().toISOString()}`;
 
-    // 테스트용 간단한 ASCII 콘텐츠
-    const testContent = `# Test Update ${Date.now()}
+    // 마크다운 형식의 도서관 현황 (ASCII 안전 버전)
+    const testContent = `# 📚 Library Management Status
 
-This is a simple test update to check if the system works.
+**Update Time:** ${new Date().toLocaleString('ko-KR')}
 
-Books: ${libraryData.length - 1}
-Unreturned: ${unreturned.length}
+## 📊 Current Statistics
 
-Status: ${unreturned.length === 0 ? 'OK' : 'PENDING'}`;
+| Item | Count |
+|------|-------|
+| Total Books | ${libraryData.length - 1} |
+| Unreturned Books | ${unreturned.length} |
+| Return Rate | ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}% |
+
+## 📈 Status Summary
+
+${unreturned.length === 0 ? 
+  '✅ **All books have been returned!** 🎉' : 
+  `⚠️ **${unreturned.length} books are currently unreturned**`}
+
+${unreturned.length > 0 ? `
+
+### 📋 Unreturned Books Details
+- Currently monitoring ${unreturned.length} unreturned items
+- Return rate: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+- Action required for pending returns
+
+` : ''}
+
+---
+*Auto-generated report from Library Management System*  
+*Last updated: ${new Date().toLocaleString('ko-KR')}*`;
+
+    // 한글 버전도 준비 (Base64 인코딩으로 안전하게 전송)
+    const koreanContent = `# 📚 도서관리 현황
+
+**업데이트 시간:** ${new Date().toLocaleString('ko-KR')}
+
+## 📊 현재 통계
+
+| 항목 | 수량 |
+|------|------|
+| 전체 도서 | ${libraryData.length - 1}권 |
+| 미반납 도서 | ${unreturned.length}권 |
+| 반납률 | ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}% |
+
+## 📈 상태 요약
+
+${unreturned.length === 0 ? 
+  '✅ **모든 도서가 반납되었습니다!** 🎉' : 
+  `⚠️ **${unreturned.length}권의 도서가 미반납 상태입니다**`}
+
+${unreturned.length > 0 ? `
+
+### 📋 미반납 도서 상세정보
+- 현재 ${unreturned.length}권이 미반납 상태
+- 반납률: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%
+- 미반납 도서에 대한 조치가 필요합니다
+
+` : ''}
+
+---
+*도서관리 시스템에서 자동 생성된 보고서*  
+*최종 업데이트: ${new Date().toLocaleString('ko-KR')}*`;
+
+    // Base64 인코딩이 작동하는지 먼저 영어 버전으로 테스트
+    const finalContent = testContent; // 성공하면 koreanContent로 변경
 
     console.log('🔤 전송할 콘텐츠:', {
-      type: 'ASCII-safe test',
-      length: testContent.length,
-      preview: testContent.substring(0, 100)
+      type: 'Formatted markdown',
+      length: finalContent.length,
+      hasKorean: /[가-힣]/.test(finalContent),
+      preview: finalContent.substring(0, 150) + '...'
     });
 
-    // Google Apps Script를 통해 Wiki 업데이트 (ASCII 안전 버전 사용)
+    // Google Apps Script를 통해 Wiki 업데이트
     const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
-      content: testContent
+      content: finalContent
     });
     
     if (result && result.success) {
