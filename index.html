@@ -207,6 +207,9 @@
           <button onclick="saveDoorayConfig()" class="action-button" style="width:100%;margin-top:12px;">
             💾 설정 저장 및 연결 테스트
           </button>
+          <button onclick="testDooraySetup()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;margin-top:8px;cursor:pointer;">
+            🧪 설정 상태 테스트
+          </button>
           <button onclick="clearDoorayConfig()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;margin-top:8px;cursor:pointer;">
             🗑️ 설정 초기화
           </button>
@@ -1664,11 +1667,24 @@ async function sendTestNotification() {
 
 // 💾 Dooray 설정 저장 및 테스트
 async function saveDoorayConfig() {
-  const token = document.getElementById('doorayToken').value.trim();
-  const projectId = document.getElementById('doorayProjectId').value.trim();
-  const postId = document.getElementById('doorayPostId').value.trim();
+  console.log('💾 saveDoorayConfig 함수 실행됨'); // 디버그용
   
+  const tokenInput = document.getElementById('doorayToken');
+  const projectInput = document.getElementById('doorayProjectId');  
+  const postInput = document.getElementById('doorayPostId');
   const testResultDiv = document.getElementById('doorayTestResult');
+  
+  // 요소 존재 확인
+  if (!tokenInput || !projectInput || !postInput || !testResultDiv) {
+    alert('❌ 입력 필드를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+    console.error('필수 요소를 찾을 수 없음:', {tokenInput, projectInput, postInput, testResultDiv});
+    return;
+  }
+  
+  const token = tokenInput.value.trim();
+  const projectId = projectInput.value.trim();
+  const postId = postInput.value.trim();
+  
   testResultDiv.style.display = 'block';
   testResultDiv.className = 'test-result';
   testResultDiv.innerHTML = '🔄 설정 저장 및 연결 테스트 중...';
@@ -1681,20 +1697,42 @@ async function saveDoorayConfig() {
   }
   
   try {
+    console.log('💾 localStorage에 설정 저장 중...');
+    
     // 로컬 스토리지에 저장
     localStorage.setItem('dooray_token', token);
     localStorage.setItem('dooray_project_id', projectId);
     localStorage.setItem('dooray_post_id', postId);
     
+    console.log('✅ localStorage 저장 완료');
+    
     // 현재 설정 업데이트
+    if (!window.DOORAY_CONFIG) {
+      console.error('❌ DOORAY_CONFIG가 정의되지 않음');
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = '❌ 설정 객체를 찾을 수 없습니다. 페이지를 새로고침해주세요.';
+      return;
+    }
+    
     window.DOORAY_CONFIG.token = token;
     window.DOORAY_CONFIG.projectId = projectId;
     window.DOORAY_CONFIG.postId = postId;
     
+    console.log('✅ DOORAY_CONFIG 업데이트 완료');
+    
     // doorayIntegration 인스턴스 재생성
-    window.doorayIntegration = new DoorayIntegration();
+    try {
+      window.doorayIntegration = new DoorayIntegration();
+      console.log('✅ DoorayIntegration 인스턴스 생성 완료');
+    } catch (error) {
+      testResultDiv.className = 'test-result status-error';
+      testResultDiv.innerHTML = `❌ Dooray 연동 모듈 초기화 실패: ${error.message}`;
+      console.error('DoorayIntegration 생성 오류:', error);
+      return;
+    }
     
     // 연결 테스트
+    console.log('🧪 연결 테스트 시작...');
     const result = await window.doorayIntegration.testConnection();
     
     if (result.success) {
@@ -1719,9 +1757,29 @@ ${result.message}
     }
     
   } catch (error) {
+    console.error('🚨 saveDoorayConfig 오류:', error);
     testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = `❌ 설정 저장 실패: ${error.message}`;
+    testResultDiv.innerHTML = `❌ 설정 저장 실패: ${error.message}<br><br>브라우저 콘솔(F12)에서 자세한 오류를 확인하세요.`;
+    
+    // 상세 오류 정보 출력
+    console.error('오류 상세:', {
+      error: error,
+      stack: error.stack,
+      token: token ? '설정됨' : '비어있음',
+      projectId: projectId ? '설정됨' : '비어있음', 
+      postId: postId ? '설정됨' : '비어있음'
+    });
   }
+}
+
+// 🧪 간단한 테스트 함수
+function testDooraySetup() {
+  console.log('🧪 Dooray 설정 테스트 시작');
+  console.log('DOORAY_CONFIG:', window.DOORAY_CONFIG);
+  console.log('doorayIntegration:', window.doorayIntegration);
+  console.log('localStorage 토큰:', localStorage.getItem('dooray_token'));
+  
+  alert('🧪 테스트 완료! 콘솔(F12)에서 결과를 확인하세요.');
 }
 
 // 🗑️ Dooray 설정 초기화
