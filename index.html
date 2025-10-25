@@ -15,9 +15,62 @@
   button.qr-btn{background:#0d9488;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px}
   input{display:block;margin:12px auto 16px;padding:8px 14px;font-size:14px;border:1px solid #cbd5e1;border-radius:6px;width:260px}
   .table-wrap{max-height:70vh;overflow:auto;border-radius:8px;background:#fff;box-shadow:0 0 5px rgba(0,0,0,.08)}
-  table{width:100%;border-collapse:collapse;min-width:960px}
-  th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px}
+  table{width:100%;border-collapse:collapse;min-width:960px;table-layout:fixed}
+  th,td{border:1px solid #e2e8f0;padding:7px 10px;text-align:left;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   th{background:#f1f5f9;color:#004080;position:sticky;top:0;z-index:10}
+  
+  /* 도서목록 테이블 컬럼 너비 (반응형) */
+  #libraryTable th:nth-child(1),
+  #libraryTable td:nth-child(1){width:7%} /* 코드번호 */
+  #libraryTable th:nth-child(2),
+  #libraryTable td:nth-child(2){width:25%} /* 제목 */
+  #libraryTable th:nth-child(3),
+  #libraryTable td:nth-child(3){width:12%} /* 지은이 */
+  #libraryTable th:nth-child(4),
+  #libraryTable td:nth-child(4){width:12%} /* 출판사 */
+  #libraryTable th:nth-child(5),
+  #libraryTable td:nth-child(5){width:8%} /* 등록일 */
+  #libraryTable th:nth-child(6),
+  #libraryTable td:nth-child(6){width:10%} /* 대출자 */
+  #libraryTable th:nth-child(7),
+  #libraryTable td:nth-child(7){width:10%} /* 대출일 */
+  #libraryTable th:nth-child(8),
+  #libraryTable td:nth-child(8){width:8%} /* 상태 */
+  #libraryTable th:nth-child(9),
+  #libraryTable td:nth-child(9){width:8%} /* QR생성 */
+  
+  /* 대출현황 테이블 컬럼 너비 */
+  #loanTable th:nth-child(1),
+  #loanTable td:nth-child(1){width:8%} /* 코드번호 */
+  #loanTable th:nth-child(2),
+  #loanTable td:nth-child(2){width:28%} /* 제목 */
+  #loanTable th:nth-child(3),
+  #loanTable td:nth-child(3){width:14%} /* 지은이 */
+  #loanTable th:nth-child(4),
+  #loanTable td:nth-child(4){width:14%} /* 출판사 */
+  #loanTable th:nth-child(5),
+  #loanTable td:nth-child(5){width:12%} /* 대출자 */
+  #loanTable th:nth-child(6),
+  #loanTable td:nth-child(6){width:12%} /* 대출일 */
+  #loanTable th:nth-child(7),
+  #loanTable td:nth-child(7){width:12%} /* 상태 */
+  
+  /* 모바일 반응형 (화면이 좁을 때) */
+  @media (max-width: 1200px) {
+    table{min-width:800px}
+    th,td{font-size:12.5px;padding:6px 8px}
+  }
+  
+  @media (max-width: 768px) {
+    table{min-width:600px}
+    th,td{font-size:11.5px;padding:5px 6px}
+    #libraryTable th:nth-child(2),
+    #libraryTable td:nth-child(2){width:30%} /* 제목 좀 더 넓게 */
+    #libraryTable th:nth-child(3),
+    #libraryTable td:nth-child(3){width:10%} /* 지은이 */
+    #libraryTable th:nth-child(4),
+    #libraryTable td:nth-child(4){width:10%} /* 출판사 */
+  }
   tr:nth-child(even){background:#fafafa}
   tr:hover{background:#eef6ff}
   tr.borrowed td{background:#fff8e1} /* 대출 중 - 노란색 */
