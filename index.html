@@ -2205,10 +2205,12 @@ ${unreturned.length === 0 ?
     
     console.log('📋 미반납 도서 샘플:', unreturned.slice(0, 3));
 
-    // Google Apps Script를 통해 Wiki 업데이트
-    const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
-      content: finalContent
-    });
+    // Google Apps Script를 통해 Wiki 업데이트 (POST 방식으로 강제)
+    const result = await window.doorayIntegration.makePostRequest(
+      localStorage.getItem('gas_backend_url'),
+      'updateWiki',
+      { content: finalContent }
+    );
     
     if (result && result.success) {
       testResultDiv.className = 'test-result status-success';
