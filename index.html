@@ -1677,18 +1677,60 @@ async function syncLibraryToWiki() {
   }
   
   try {
-    // 전체 원본 데이터 사용 (필터링되지 않은 전체 데이터)
-    if (!window.allTableData || !window.allTableData.libraryTable) {
+    // 디버깅: 전역 변수 상태 확인
+    console.log('🔍 window.allTableData 상태:', window.allTableData);
+    console.log('🔍 window 객체 키들:', Object.keys(window).filter(key => key.includes('allTableData') || key.includes('Table')));
+    
+    // 여러 방법으로 데이터 찾기 시도
+    let libraryData = null;
+    
+    // 방법 1: window.allTableData 확인
+    if (window.allTableData && window.allTableData.libraryTable && window.allTableData.libraryTable.length > 0) {
+      libraryData = window.allTableData.libraryTable;
+      console.log('✅ 방법 1 성공: window.allTableData.libraryTable 사용');
+    }
+    // 방법 2: 전역 변수 allTableData 직접 확인
+    else if (typeof allTableData !== 'undefined' && allTableData.libraryTable && allTableData.libraryTable.length > 0) {
+      libraryData = allTableData.libraryTable;
+      console.log('✅ 방법 2 성공: 전역 allTableData 사용');
+    }
+    // 방법 3: 테이블에서 직접 추출
+    else {
+      console.log('⚠️ 전역 데이터 없음, 테이블에서 직접 추출 시도');
+      const libraryTable = document.getElementById('libraryTable');
+      if (libraryTable) {
+        const rows = libraryTable.querySelectorAll('tr');
+        if (rows.length > 0) {
+          libraryData = [];
+          rows.forEach((row) => {
+            const cells = row.querySelectorAll('td, th');
+            const rowData = [];
+            cells.forEach(cell => {
+              rowData.push(cell.textContent.trim());
+            });
+            if (rowData.length > 0) {
+              libraryData.push(rowData);
+            }
+          });
+          console.log('✅ 방법 3 성공: 테이블에서 직접 추출, 행 수:', libraryData.length);
+        }
+      }
+    }
+
+    if (!libraryData || libraryData.length === 0) {
       testResultDiv.className = 'test-result status-warning';
       testResultDiv.innerHTML = `
         ❌ 도서관 데이터를 찾을 수 없습니다.
         
-📋 먼저 도서 데이터를 로드해주세요.
+� 디버깅 정보:
+• window.allTableData 존재: ${!!window.allTableData}
+• libraryTable 존재: ${!!(window.allTableData && window.allTableData.libraryTable)}
+• 테이블 요소 존재: ${!!document.getElementById('libraryTable')}
+
+📋 브라우저 콘솔(F12)에서 자세한 정보를 확인하세요.
       `;
       return;
     }
-
-    const libraryData = window.allTableData.libraryTable;
     
     if (!libraryData || libraryData.length === 0) {
       testResultDiv.className = 'test-result status-warning';
