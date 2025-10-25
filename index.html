@@ -1655,11 +1655,11 @@ Wiki ID: ${result.data.wikiId || 'N/A'}
       `;
     } else {
       testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = `❌ ${result.message}`;
+      testResultDiv.innerHTML = '❌ ' + result.message;
     }
   } catch (error) {
     testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = `❌ 테스트 실패: ${error.message}`;
+    testResultDiv.innerHTML = '❌ 테스트 실패: ' + error.message;
   }
 }
 
@@ -1677,57 +1677,126 @@ async function syncLibraryToWiki() {
   }
   
   try {
-    // 테스트용 도서관 현황 데이터 생성 (실제 Dooray 정보 활용)
+    // 현재 도서관 데이터 확인
+    const libraryTable = document.getElementById('libraryTable');
+    if (!libraryTable || !window.allTableData || !window.allTableData.libraryTable) {
+      testResultDiv.className = 'test-result status-warning';
+      testResultDiv.innerHTML = `
+        ❌ 도서관 데이터를 찾을 수 없습니다.
+        
+📋 먼저 엑셀 파일을 업로드하거나 도서 데이터를 로드해주세요.
+      `;
+      return;
+    }
+
+    const libraryData = window.allTableData.libraryTable;
     const currentDate = new Date().toLocaleString('ko-KR');
-    const testLibraryContent = `# 📚 도서관리 현황 (${currentDate} 업데이트)
-
-## 📊 현재 대출 현황
-| 도서명 | 저자 | 대출자 | 상태 | 대출일 |
-|--------|------|--------|------|--------|
-| JavaScript 완벽 가이드 | 데이비드 플래너건 | 홍길동 | 대출중 | 2025-10-20 |
-| React 실전 프로젝트 | 김개발 | 이코딩 | 연체 | 2025-10-15 |
-| Node.js 교과서 | 조현영 | 박개발 | 대출중 | 2025-10-22 |
-
-## 📈 통계 요약
-- **전체 도서**: 150권
-- **대출 중**: 3권  
-- **연체**: 1권
-- **이용률**: 2.7%
-
-## 🔄 시스템 정보
-- 업데이트 시간: ${currentDate}
-- 업데이트 방법: 도서관리 시스템 자동 동기화
-- Wiki ID: 3971855165716167130
-- Page ID: 4185119590638689477
-
----
-*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
+    
+    // 미반납 도서 필터링 (대출중, 연체 상태)
+    const unreturned = [];
+    const headers = libraryData[0]; // 헤더 행
+    
+    // 상태와 대출자 열 인덱스 찾기
+    let statusIndex = -1;
+    let borrowerIndex = -1;
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i].toString().toLowerCase();
+      if (header.includes('상태') || header.includes('status')) {
+        statusIndex = i;
+      }
+      if (header.includes('대출자') || header.includes('borrower') || header.includes('대여자')) {
+        borrowerIndex = i;
+      }
+    }
+    
+    // 미반납 도서 추출
+    for (let i = 1; i < libraryData.length; i++) {
+      const row = libraryData[i];
+      const status = statusIndex >= 0 ? (row[statusIndex] || '').toString() : '';
+      const borrower = borrowerIndex >= 0 ? (row[borrowerIndex] || '').toString() : '';
+      
+      // 대출중이거나 연체인 경우, 또는 대출자가 있는 경우
+      if ((status.includes('대출') || status.includes('연체')) || 
+          (borrower && borrower.trim() !== '' && borrower !== '-')) {
+        unreturned.push({
+          bookCode: row[1] || '',
+          title: row[2] || '제목없음',
+          author: row[3] || '저자미상',
+          borrower: borrower || '대출자미상',
+          status: status || '대출중'
+        });
+      }
+    }
+    
+    // Wiki 콘텐츠 생성
+    let wikiContent = `# 📚 도서관리 현황 (${currentDate} 업데이트)\n\n`;
+    
+    if (unreturned.length > 0) {
+      wikiContent += `## � 현재 미반납 도서 목록\n\n`;
+      wikiContent += `| 도서코드 | 도서명 | 저자 | 대출자 | 상태 |\n`;
+      wikiContent += `|----------|--------|------|--------|------|\n`;
+      
+      unreturned.forEach(book => {
+        wikiContent += `| ${book.bookCode} | ${book.title} | ${book.author} | ${book.borrower} | ${book.status} |\n`;
+      });
+      
+      wikiContent += `\n## 📈 통계 요약\n`;
+      wikiContent += `- **전체 도서**: ${libraryData.length - 1}권\n`;
+      wikiContent += `- **미반납 도서**: ${unreturned.length}권\n`;
+      
+      const overdue = unreturned.filter(book => book.status.includes('연체')).length;
+      if (overdue > 0) {
+        wikiContent += `- **연체 도서**: ${overdue}권 ⚠️\n`;
+      }
+      
+      wikiContent += `- **반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n\n`;
+    } else {
+      wikiContent += `## ✅ 현재 모든 도서가 반납된 상태입니다!\n\n`;
+      wikiContent += `🎉 **축하합니다!** 모든 도서가 정상적으로 반납되었습니다.\n\n`;
+      wikiContent += `## 📈 통계 요약\n`;
+      wikiContent += `- **전체 도서**: ${libraryData.length - 1}권\n`;
+      wikiContent += `- **반납률**: 100% 🏆\n\n`;
+    }
+    
+    wikiContent += `## 🔄 업데이트 정보\n`;
+    wikiContent += `- **업데이트 시간**: ${currentDate}\n`;
+    wikiContent += `- **데이터 소스**: ${window.allTableData.fileName || '도서관리 시스템'}\n`;
+    wikiContent += `- **업데이트 방법**: 자동 동기화\n\n`;
+    wikiContent += `---\n`;
+    wikiContent += `*이 내용은 도서관리 시스템에서 자동으로 생성되었습니다.*`;
 
     // Google Apps Script를 통해 Wiki 업데이트
     const result = await window.doorayIntegration.makeApiRequest('updateWiki', {
-      content: testLibraryContent
+      content: wikiContent
     });
     
     if (result && result.success) {
       testResultDiv.className = 'test-result status-success';
-      testResultDiv.innerHTML = `
-        ✅ Dooray Wiki 업데이트 완료! 🎉
-        
-📝 업데이트된 내용:
-• 현재 대출 현황 테이블 (3권)
-• 통계 요약 정보 (전체 150권, 대출중 3권, 연체 1권)
-• 자동 업데이트 타임스탬프
-
-🔗 Dooray Wiki에서 확인해보세요!
-업데이트 시간: ${currentDate}
-      `;
+      
+      let successMessage = `✅ Dooray Wiki 업데이트 완료! 🎉\n\n`;
+      
+      if (unreturned.length > 0) {
+        successMessage += `� **미반납 도서**: ${unreturned.length}권\n`;
+        const overdue = unreturned.filter(book => book.status.includes('연체')).length;
+        if (overdue > 0) {
+          successMessage += `⚠️ **연체 도서**: ${overdue}권\n`;
+        }
+        successMessage += `📊 **반납률**: ${((libraryData.length - 1 - unreturned.length) / (libraryData.length - 1) * 100).toFixed(1)}%\n`;
+      } else {
+        successMessage += `🎉 **모든 도서 반납 완료!**\n📊 **반납률**: 100% 🏆\n`;
+      }
+      
+      successMessage += `\n🔗 Dooray Wiki에서 확인해보세요!\n`;
+      successMessage += `⏰ 업데이트 시간: ${currentDate}`;
+      
+      testResultDiv.innerHTML = successMessage.replace(/\n/g, '<br>');
     } else {
       testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = `❌ Wiki 업데이트 실패: ${result?.message || result?.error || '알 수 없는 오류'}`;
+      testResultDiv.innerHTML = '❌ Wiki 업데이트 실패: ' + (result?.message || result?.error || '알 수 없는 오류');
     }
   } catch (error) {
     testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = `❌ 업데이트 실패: ${error.message}`;
+    testResultDiv.innerHTML = '❌ 업데이트 실패: ' + error.message;
   }
 }
 
@@ -1757,21 +1826,19 @@ async function sendTestNotification() {
     
     if (success) {
       testResultDiv.className = 'test-result status-success';
-      testResultDiv.innerHTML = `
-        ✅ 테스트 알림 전송 완료!
-        
-알림 내용: 도서 대출 알림
-도서명: ${testBookInfo.title}
-대출자: ${testBookInfo.borrower}
-전송 시간: ${new Date().toLocaleString('ko-KR')}
-      `;
+      testResultDiv.innerHTML = 
+        '✅ 테스트 알림 전송 완료!<br><br>' +
+        '알림 내용: 도서 대출 알림<br>' +
+        '도서명: ' + testBookInfo.title + '<br>' +
+        '대출자: ' + testBookInfo.borrower + '<br>' +
+        '전송 시간: ' + new Date().toLocaleString('ko-KR');
     } else {
       testResultDiv.className = 'test-result status-warning';
       testResultDiv.innerHTML = '⚠️ 알림 전송 실패 (채널 ID 미설정 또는 권한 없음)';
     }
   } catch (error) {
     testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = `❌ 알림 전송 실패: ${error.message}`;
+    testResultDiv.innerHTML = '❌ 알림 전송 실패: ' + error.message;
   }
 }
 
@@ -1835,7 +1902,7 @@ async function saveDoorayConfig() {
       console.log('✅ DoorayIntegration 인스턴스 생성 완료');
     } catch (error) {
       testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = `❌ Dooray 연동 모듈 초기화 실패: ${error.message}`;
+      testResultDiv.innerHTML = '❌ Dooray 연동 모듈 초기화 실패: ' + error.message;
       console.error('DoorayIntegration 생성 오류:', error);
       return;
     }
@@ -1862,13 +1929,13 @@ Wiki ID: ${result.data.wikiId || 'N/A'}
       
     } else {
       testResultDiv.className = 'test-result status-error';
-      testResultDiv.innerHTML = `❌ 연결 실패: ${result.message}<br><br>토큰과 ID 정보를 다시 확인해주세요.`;
+      testResultDiv.innerHTML = '❌ 연결 실패: ' + result.message + '<br><br>토큰과 ID 정보를 다시 확인해주세요.';
     }
     
   } catch (error) {
     console.error('🚨 saveDoorayConfig 오류:', error);
     testResultDiv.className = 'test-result status-error';
-    testResultDiv.innerHTML = `❌ 설정 저장 실패: ${error.message}<br><br>브라우저 콘솔(F12)에서 자세한 오류를 확인하세요.`;
+    testResultDiv.innerHTML = '❌ 설정 저장 실패: ' + error.message + '<br><br>브라우저 콘솔(F12)에서 자세한 오류를 확인하세요.';
     
     // 상세 오류 정보 출력
     console.error('오류 상세:', {
