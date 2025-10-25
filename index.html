@@ -367,7 +367,7 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
       // 대출 중 필터가 활성화되어 있다면 다시 적용
       if(borrowedOn){
         for(let i=1;i<trs.length;i++){
-          const td=trs[i].querySelectorAll('td')[statusIdx];
+          const td=trs[i].querySelectorSAll('td')[statusIdx];
           const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
           trs[i].style.display=(!isBorrowed)?'none':'';
           trs[i].classList.toggle('borrowed',isBorrowed);
@@ -399,6 +399,61 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     // 검색 기능 다시 바인딩
     addSearch('searchLibrary','libraryTable');
   };
+
+  // ✅ 최근 30일 도서만 보기 필터 (등록일 컬럼 확인)
+  const btnRecent=document.getElementById('btnRecent');
+  let recentOn=false;
+  
+  // 등록일 컬럼이 있는지 확인
+  const dateIdx=findColIndex(library[0],['등록일','일자','날짜','입고일','구입일']);
+  
+  if(dateIdx===-1){
+    // 등록일 컬럼이 없으면 버튼 비활성화
+    btnRecent.style.opacity='0.5';
+    btnRecent.style.cursor='not-allowed';
+    btnRecent.title='등록일 정보가 없어서 사용할 수 없습니다';
+    btnRecent.onclick=()=>{
+      alert('📅 등록일 정보가 없어서 최근 30일 필터를 사용할 수 없습니다.\n\nCSV 파일에 "등록일", "일자", "날짜" 등의 컬럼을 추가해주세요.');
+    };
+  }else{
+    // 등록일 컬럼이 있으면 정상 동작
+    btnRecent.onclick=()=>{
+      recentOn=!recentOn;btnRecent.classList.toggle('active',recentOn);
+      
+      const trs=document.querySelectorAll('#libraryTable tr');
+      const now=new Date();
+      const thirtyDaysAgo=new Date(now.getTime()-30*24*60*60*1000);
+      
+      for(let i=1;i<trs.length;i++){
+        const tr=trs[i];
+        
+        if(recentOn){
+          // 등록일 확인
+          const dateText=tr.querySelectorAll('td')[dateIdx]?.textContent||'';
+          const bookDate=new Date(dateText);
+          const isRecent=!isNaN(bookDate)&&bookDate>=thirtyDaysAgo;
+          tr.style.display=isRecent?'':'none';
+        }else{
+          // 필터 해제 - 모든 행 표시
+          tr.style.display='';
+        }
+      }
+      
+      // 다른 필터와의 호환성을 위해 대출 중 필터가 활성화된 경우 재적용
+      if(borrowedOn){
+        const statusIdx=findColIndex(library[0],['상태','대출여부']);
+        for(let i=1;i<trs.length;i++){
+          if(trs[i].style.display!=='none'){ // 30일 필터를 통과한 경우에만
+            const td=trs[i].querySelectorAll('td')[statusIdx];
+            const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
+            if(!isBorrowed){
+              trs[i].style.display='none';
+            }
+          }
+        }
+      }
+    };
+  }
 });
 
 document.getElementById('btnLoans').onclick=()=>{
