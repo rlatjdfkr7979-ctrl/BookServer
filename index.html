@@ -21,11 +21,11 @@
   tr:nth-child(even){background:#fafafa}
   tr:hover{background:#eef6ff}
   tr.borrowed td{background:#fff8e1}
-  tr.overdue td{background:#ffe4e1}
-  tr.recent td{background:#e6ffed}
+  tr.overdue td{background:#ffe4e1 !important;} /* ✅ 연체 표시 */
   .hidden{display:none}
-  #chartWrap{max-width:800px;margin:20px auto;background:#fff;padding:16px;border-radius:10px;box-shadow:0 0 5px rgba(0,0,0,.1)}
   footer{text-align:center;color:#667085;font-size:13px;margin-top:18px}
+  #historyModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;}
+  #historyModal .inner{background:#fff;padding:20px;border-radius:10px;max-width:520px;width:90%;max-height:80vh;overflow:auto;}
 </style>
 </head>
 <body>
@@ -35,8 +35,7 @@
   <button id="btnLoans" class="active">📘 대출 현황</button>
   <button id="btnLibrary">📗 전체 도서목록</button>
   <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
-  <button id="btnRecent" class="filter">🆕 최근 30일 도서만 보기</button>
-  <button id="sortBtn" style="background:#475569;">⬇️ 최신순 보기</button>
+  <button id="btnRecent" style="background:#15803d;">🆕 최근 30일 도서만 보기</button>
   <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
 </nav>
 
@@ -48,8 +47,16 @@
 <div id="librarySection" class="hidden">
   <input type="text" id="searchLibrary" placeholder="제목/도서명, 저자, 출판사 검색...">
   <div class="table-wrap"><table id="libraryTable"></table></div>
-  <div id="chartWrap" class="hidden">
-    <canvas id="chartBorrowTop" height="200"></canvas>
+</div>
+
+<!-- 도서 이력 팝업 -->
+<div id="historyModal">
+  <div class="inner">
+    <h3 id="histTitle">📖 도서 이력</h3>
+    <div id="histContent"></div>
+    <div style="text-align:center;margin-top:12px;">
+      <button onclick="closeHistory()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 12px;">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -58,137 +65,126 @@
 <!-- 라이브러리 -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 /* ====== 0) 환경 설정 ====== */
-const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
-const ENTRY_IDS = { code:"entry.32105598", title:"entry.1234176416", author:"entry.628826984", status:"entry.12641564", renter:"entry.615776096" };
+const FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
+const ENTRY_IDS={code:"entry.32105598",title:"entry.1234176416",author:"entry.628826984",status:"entry.12641564",renter:"entry.615776096"};
 
 /* ====== 유틸 ====== */
-const norm = s => String(s||'').replace(/\uFEFF/g,'').trim();
-const normHead = s => norm(s).replace(/\s/g,'');
-const includesAny = (h, keys) => keys.some(k => normHead(h).includes(k));
-const findColIndex = (header, candidates) => header.findIndex(h => includesAny(h, candidates));
-const isRecent = dateStr => { const d=new Date(dateStr); return (Date.now()-d.getTime())<30*24*60*60*1000; };
+const norm=s=>String(s||'').replace(/\uFEFF/g,'').trim();
+const normHead=s=>norm(s).replace(/\s/g,'');
+const includesAny=(h,keys)=>keys.some(k=>normHead(h).includes(k));
+function findColIndex(header,candidates){return header.findIndex(h=>includesAny(h,candidates));}
 
 /* ====== CSV 로드 ====== */
-async function loadCSV(file){ const res=await fetch(file+'?v='+Date.now()); if(!res.ok)throw new Error(file+' 로드 실패'); const text=await res.text(); return Papa.parse(text.trim(),{skipEmptyLines:true}).data; }
+async function loadCSV(file){
+  const res=await fetch(file+'?v='+Date.now());
+  if(!res.ok) throw new Error(file+' 로드 실패');
+  const text=await res.text();
+  return Papa.parse(text.trim(),{skipEmptyLines:true}).data;
+}
+
+/* ====== QR 생성 ====== */
+function generateQR({code,title,author,renter,status}){
+  const statusEncoded=(status.includes('반납'))?"%EB%B0%98%EB%82%A9":(status.includes('대출')||status.includes('대여'))?"%EB%8C%80%EC%B6%9C":"";
+  const url=`${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
+  const layer=document.createElement('div');
+  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
+  layer.innerHTML=`<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
+  document.body.appendChild(layer);
+  new QRCode(layer.querySelector('#qrbox'),{text:url,width:220,height:220,colorDark:"#000",colorLight:"#fff",correctLevel:QRCode.CorrectLevel.H});
+  layer.querySelector('#qrClose').onclick=()=>layer.remove();
+  layer.querySelector('#qrDown').onclick=()=>{const img=layer.querySelector('#qrbox img');const a=document.createElement('a');a.href=img.src;a.download=`${code}.png`;a.click();};
+}
 
 /* ====== 표 렌더링 ====== */
-function renderTable(rows, id, withQR=false, books=[]){
-  const header = rows[0]; const table = document.getElementById(id);
-  const finalHeader = withQR ? [...header, 'QR 생성'] : header;
-  table.innerHTML = '<tr>'+finalHeader.map(h=>`<th>${h}</th>`).join('')+'</tr>';
-
+function renderTable(rows,id,withQR=false){
+  const header=rows[0];
+  const table=document.getElementById(id);
+  const finalHeader=withQR?[...header,'QR 생성']:header;
+  table.innerHTML='<tr>'+finalHeader.map(h=>`<th>${h}</th>`).join('')+'</tr>';
   for(let i=1;i<rows.length;i++){
-    const tr = document.createElement('tr');
-    tr.innerHTML = rows[i].map(c=>`<td>${c}</td>`).join('');
-
-    const status = rows[i][findColIndex(header,['상태','대출여부'])] || '';
-    const dateStr = rows[i][findColIndex(header,['등록일','날짜','일자'])] || '';
-
-    // ① 자동 색 강조
-    if(status.includes('대출')) tr.classList.add('borrowed');
-    if(status.includes('연체')) tr.classList.add('overdue');
-    if(isRecent(dateStr)) tr.classList.add('recent');
-
-    // ⑥ 도서 이력 팝업 연결
-    tr.onclick = ()=>showHistoryPopup(rows[i][findColIndex(header,['코드','코드번호'])], books);
-
+    const tr=document.createElement('tr');
+    tr.innerHTML=rows[i].map((c,j)=>`<td>${c}</td>`).join('');
+    // 제목 클릭 시 이력 보기
     if(withQR){
-      const code = rows[i][findColIndex(header,['코드','코드번호'])] || '';
-      const title = rows[i][findColIndex(header,['제목','도서명'])] || '';
-      const author = rows[i][findColIndex(header,['지은이','저자'])] || '';
-      const status = rows[i][findColIndex(header,['상태','대출여부'])] || '';
-      const renter = rows[i][findColIndex(header,['대출자','대여자'])] || '';
-      const tdQR = document.createElement('td');
-      const btn = document.createElement('button');
-      btn.className='qr-btn'; btn.textContent='📷 QR';
-      btn.onclick = e=>{ e.stopPropagation(); generateQR({code,title,author,renter,status}); };
-      tdQR.appendChild(btn); tr.appendChild(tdQR);
+      const titleIdx=findColIndex(header,['제목','도서명']);
+      const codeIdx=findColIndex(header,['코드','코드번호']);
+      const tdTitle=tr.children[titleIdx];
+      if(tdTitle){
+        tdTitle.style.color='#2563eb';
+        tdTitle.style.cursor='pointer';
+        tdTitle.onclick=()=>showHistory(norm(rows[i][codeIdx]),norm(rows[i][titleIdx]));
+      }
+      const tdQR=document.createElement('td');
+      const code=rows[i][codeIdx];
+      const author=rows[i][findColIndex(header,['지은이','저자'])];
+      const renter=rows[i][findColIndex(header,['대출자','대여자'])];
+      const status=rows[i][findColIndex(header,['상태','대출여부'])];
+      const btn=document.createElement('button');
+      btn.className='qr-btn';btn.textContent='📷 QR';
+      btn.onclick=()=>generateQR({code,title:rows[i][titleIdx],author,renter,status});
+      tdQR.appendChild(btn);tr.appendChild(tdQR);
     }
     table.appendChild(tr);
   }
 }
 
 /* ====== 검색 ====== */
-function addSearch(inputId, tableId){
-  const input=document.getElementById(inputId); let timer;
-  input.addEventListener('input', e=>{
+function addSearch(inputId,tableId){
+  const input=document.getElementById(inputId);
+  let timer;
+  input.addEventListener('input',e=>{
     clearTimeout(timer);
     timer=setTimeout(()=>{
       const val=e.target.value.trim();
       const trs=document.querySelectorAll(`#${tableId} tr`);
       for(let i=1;i<trs.length;i++){
-        const tr=trs[i]; tr.style.display=tr.textContent.includes(val)?'':'none';
+        const tr=trs[i];
+        const text=tr.textContent;
+        tr.style.display=text.includes(val)?'':'none';
       }
     },150);
   });
 }
 
-/* ====== QR 생성 ====== */
-function generateQR({code,title,author,renter,status}){
-  const statusEncoded = status.includes('반납')?"%EB%B0%98%EB%82%A9":(status.includes('대출')?"%EB%8C%80%EC%B6%9C":"");
-  const url=`${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
-  const layer=document.createElement('div');
-  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;`;
-  layer.innerHTML=`<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px">
-  <h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3>
-  <div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div>
-  <p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p>
-  <div style="margin-top:10px">
-    <button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button>
-    <button id="qrDown" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button>
-  </div></div>`;
-  document.body.appendChild(layer);
-  new QRCode(layer.querySelector('#qrbox'),{text:url,width:220,height:220,colorDark:"#000",colorLight:"#fff"});
-  layer.querySelector('#qrClose').onclick=()=>layer.remove();
-  layer.querySelector('#qrDown').onclick=()=>{
-    const img=layer.querySelector('#qrbox img'); const a=document.createElement('a');
-    a.href=img.src; a.download=`${code}.png`; a.click();
-  };
+/* ====== 연체 판별 ====== */
+function isOverdue(dateStr,status){
+  if(!dateStr||status.includes('반납'))return false;
+  const d=new Date(dateStr);
+  if(isNaN(d))return false;
+  const diff=(Date.now()-d.getTime())/(1000*60*60*24);
+  return diff>14;
 }
 
-/* ====== ⑥ 도서별 이력 팝업 ====== */
-function showHistoryPopup(code, books){
-  if(!code) return;
-  const header=books[0]; const codeIdx=findColIndex(header,['코드','코드번호']);
-  const logs=books.filter(r=>r[codeIdx]===code);
-  if(logs.length<2) return;
-  const html=logs.map(r=>'<tr>'+r.map(c=>`<td>${c}</td>`).join('')+'</tr>').join('');
-  const layer=document.createElement('div');
-  layer.style=`position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999`;
-  layer.innerHTML=`<div style="background:#fff;padding:20px;border-radius:8px;max-height:80vh;overflow:auto">
-  <h3>📖 대출 이력 (${code})</h3>
-  <table border="1" style="border-collapse:collapse;font-size:13px">${html}</table>
-  <div style="text-align:center;margin-top:10px"><button style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px" onclick="this.closest('div').parentElement.remove()">닫기</button></div>
-  </div>`;
-  document.body.appendChild(layer);
+/* ====== 도서 이력 팝업 ====== */
+function showHistory(code,title){
+  const modal=document.getElementById('historyModal');
+  const histTitle=document.getElementById('histTitle');
+  const histContent=document.getElementById('histContent');
+  histTitle.textContent=`📖 ${title} (${code})`;
+  const recs=window.booksData.filter(r=>norm(r[1])===code);
+  if(recs.length===0){histContent.innerHTML='<p>이력 없음</p>';}
+  else{
+    histContent.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th>등록일</th><th>대여자</th><th>상태</th></tr>'+recs.map(r=>`<tr><td>${r[0]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`).join('')+'</table>';
+  }
+  modal.style.display='flex';
 }
-
-/* ====== ⑤ 통계 대시보드 ====== */
-function showChart(books){
-  const titleIdx=findColIndex(books[0],['도서명','제목']);
-  const count={};
-  for(let i=1;i<books.length;i++){const t=norm(books[i][titleIdx]);if(!t)continue;count[t]=(count[t]||0)+1;}
-  const sorted=Object.entries(count).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const labels=sorted.map(x=>x[0]); const data=sorted.map(x=>x[1]);
-  const ctx=document.getElementById('chartBorrowTop');
-  new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'대출 횟수 TOP10',data:data,backgroundColor:'#2563eb'}]},options:{scales:{y:{beginAtZero:true}}}});
-  document.getElementById('chartWrap').classList.remove('hidden');
-}
+function closeHistory(){document.getElementById('historyModal').style.display='none';}
 
 /* ====== 메인 실행 ====== */
-let libraryData=[]; let reversed=true; let globalBooks=[];
 Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library])=>{
-  globalBooks=books; renderTable(books,'loanTable');
+  window.booksData=books; // 이력 팝업용 저장
+  renderTable(books,'loanTable');
+
   const bh=books[0].map(norm);
   const bDateIdx=findColIndex(bh,['등록일','대출일','일자']);
   const bCodeIdx=findColIndex(bh,['코드','코드번호']);
   const bStatusIdx=findColIndex(bh,['상태','대출여부']);
   const bUserIdx=findColIndex(bh,['대여자','대출자']);
   const latestByCode={};
+
   for(let i=1;i<books.length;i++){
     const date=norm(books[i][bDateIdx]);
     const code=norm(books[i][bCodeIdx]);
@@ -197,88 +193,77 @@ Promise.all([loadCSV('books.csv'),loadCSV('library.csv')]).then(([books,library]
     if(!code)continue;
     if(!latestByCode[code])latestByCode[code]={status:'',borrower:'',lastReturn:''};
     if(status.includes('반납'))latestByCode[code].lastReturn=date;
-    latestByCode[code].status=status;latestByCode[code].borrower=borrower;
+    latestByCode[code].status=status;
+    latestByCode[code].borrower=borrower;
   }
+
   const lh=library[0].map(norm);
   const lCodeIdx=findColIndex(lh,['코드','코드번호']);
   let lStatusIdx=findColIndex(lh,['상태','대출여부']);
   let lUserIdx=findColIndex(lh,['대여자','대출자']);
-  let lRetIdx=findColIndex(lh,['최근반납일','반납일']);
   if(lStatusIdx===-1){library[0].push('대출여부');lStatusIdx=library[0].length-1;}
   if(lUserIdx===-1){library[0].push('대출자');lUserIdx=library[0].length-1;}
-  if(lRetIdx===-1){library[0].push('최근반납일');lRetIdx=library[0].length-1;}
+
   for(let i=1;i<library.length;i++){
-    const code=norm(library[i][lCodeIdx]); const rec=latestByCode[code];
-    if(!rec){library[i][lStatusIdx]='';library[i][lUserIdx]='';library[i][lRetIdx]='';continue;}
-    if(rec.status.includes('반납')){library[i][lStatusIdx]='반납';library[i][lUserIdx]='';library[i][lRetIdx]=rec.lastReturn||'';}
-    else{library[i][lStatusIdx]=rec.status||'대출';library[i][lUserIdx]=rec.borrower||'';library[i][lRetIdx]=rec.lastReturn||'';}
+    const code=norm(library[i][lCodeIdx]);
+    const rec=latestByCode[code];
+    if(!rec){library[i][lStatusIdx]='';library[i][lUserIdx]='';continue;}
+    if(rec.status.includes('반납')){
+      library[i][lStatusIdx]='반납';
+      library[i][lUserIdx]='';
+    }else{
+      library[i][lStatusIdx]=rec.status||'대출';
+      library[i][lUserIdx]=rec.borrower||'';
+      // ✅ 연체 계산 추가
+      const loanRow=books.find(b=>norm(b[bCodeIdx])===code);
+      const loanDate=loanRow?loanRow[bDateIdx]:'';
+      if(isOverdue(loanDate,rec.status))library[i][lStatusIdx]='연체';
+    }
   }
-  libraryData=library;
-  const header=library[0]; const reversedRows=[header,...library.slice(1).reverse()];
-  renderTable(reversedRows,'libraryTable',true,books);
-  showChart(books);
+
+  renderTable(library,'libraryTable',true);
   addSearch('searchLoans','loanTable');
   addSearch('searchLibrary','libraryTable');
 
-  // ③ 필터 버튼들
-  const btnBorrow=document.getElementById('btnBorrowed');
-  btnBorrow.onclick=()=>{
-    btnBorrow.classList.toggle('active');
-    const on=btnBorrow.classList.contains('active');
-    const statusIdx=findColIndex(library[0],['상태','대출여부']);
+  // ✅ 연체 색상 표시
+  const trs=document.querySelectorAll('#libraryTable tr');
+  const statusIdx=findColIndex(library[0],['상태','대출여부']);
+  for(let i=1;i<trs.length;i++){
+    const td=trs[i].querySelectorAll('td')[statusIdx];
+    if(td&&td.textContent.includes('연체'))trs[i].classList.add('overdue');
+  }
+
+  // ✅ 대출 중 필터
+  const btn=document.getElementById('btnBorrowed');
+  let on=false;
+  btn.onclick=()=>{
+    on=!on;btn.classList.toggle('active',on);
+    const header=library[0];
+    const statusIdx=findColIndex(header,['상태','대출여부']);
     const trs=document.querySelectorAll('#libraryTable tr');
     for(let i=1;i<trs.length;i++){
       const td=trs[i].querySelectorAll('td')[statusIdx];
-      const isBorrowed=td&&/(대출|대여)/.test(td.textContent);
+      const isBorrowed=td&&/(대출|대여|연체)/.test(td.textContent);
       trs[i].style.display=(on&&!isBorrowed)?'none':'';
+      trs[i].classList.toggle('borrowed',isBorrowed);
     }
   };
-  const btnRecent=document.getElementById('btnRecent');
-btnRecent.onclick=()=>{
-  btnRecent.classList.toggle('active');
-  const on=btnRecent.classList.contains('active');
-  const dateIdx=findColIndex(library[0],['등록일','일자']);
-  const trs=document.querySelectorAll('#libraryTable tr');
-  for(let i=1;i<trs.length;i++){
-    const td=trs[i].querySelectorAll('td')[dateIdx];
-    const recent=td&&isRecent(td.textContent);
-    trs[i].style.display=(on&&!recent)?'none':'';
-  }
-
-  // ✅ 통계 차트는 항상 그대로 유지되도록 강제 표시
-  document.getElementById('chartWrap').classList.remove('hidden');
-};
 });
 
-/* ====== 최신순/오래된순 토글 ====== */
-document.getElementById('sortBtn').onclick = () => {
-  if (!libraryData.length) return;
-  const header = libraryData[0];
-  reversed = !reversed;
-  const rows = reversed ? [header, ...libraryData.slice(1).reverse()] : libraryData;
-  renderTable(rows, 'libraryTable', true, globalBooks);
-  document.getElementById('sortBtn').textContent = reversed
-    ? '⬆️ 오래된 순 보기'
-    : '⬇️ 최신순 보기';
-};
-
-/* ====== 탭 전환 ====== */
-document.getElementById('btnLoans').onclick = () => {
+document.getElementById('btnLoans').onclick=()=>{
   document.getElementById('loanSection').classList.remove('hidden');
   document.getElementById('librarySection').classList.add('hidden');
   document.getElementById('btnLoans').classList.add('active');
   document.getElementById('btnLibrary').classList.remove('active');
 };
-document.getElementById('btnLibrary').onclick = () => {
+document.getElementById('btnLibrary').onclick=()=>{
   document.getElementById('librarySection').classList.remove('hidden');
   document.getElementById('loanSection').classList.add('hidden');
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
 };
-document.getElementById('btnAddBook').onclick = () => {
-  window.open(
-    'https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header'
-  );
+document.getElementById('btnAddBook').onclick=()=>{
+  window.open('https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform?usp=header');
 };
 </script>
 </body>
