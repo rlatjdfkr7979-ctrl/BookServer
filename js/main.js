@@ -155,10 +155,6 @@ document.getElementById('btnLoans').onclick = () => {
   document.getElementById('btnLoans').classList.add('active');
   document.getElementById('btnLibrary').classList.remove('active');
   
-  // 전체도서목록/대출중 버튼 비활성화
-  document.getElementById('btnLibrary').disabled = true;
-  document.getElementById('btnBorrowed').disabled = true;
-  
   // 필터 재적용 (대출현황에서도 필터 작동)
   applyAllFilters();
   window.scrollTo(0, 0);
@@ -171,10 +167,6 @@ document.getElementById('btnLibrary').onclick = () => {
   // 버튼 활성화 상태 관리
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
-  
-  // 전체도서목록/대출중 버튼 활성화
-  document.getElementById('btnLibrary').disabled = false;
-  document.getElementById('btnBorrowed').disabled = false;
   
   // 필터 재적용 (이전 상태 유지)
   applyAllFilters();
