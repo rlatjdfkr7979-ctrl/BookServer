@@ -10,14 +10,28 @@
 <body>
 
 <h1>📚 울산도시공사 도서관리 시스템</h1>
+
+<!-- 주요 네비게이션 -->
 <nav>
-  <button id="btnLibrary" class="active">📗 전체 도서목록</button>
-  <button id="btnBorrowed" class="filter">📕 대출 중 도서만 보기</button>
-  <button id="btnNewest" class="filter" style="background:#7c3aed;">📈 최신 도서 순으로 보기</button>
-  <button id="btnRecent" style="background:#15803d;">🆕 최근 30일 도서만 보기</button>
-  <button id="btnLoans">📘 대출 현황</button>
-  <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
-  <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
+  <div class="nav-group main-nav">
+    <button id="btnLibrary" class="active">📗 전체 도서목록</button>
+    <button id="btnLoans">📘 대출 현황</button>
+  </div>
+  
+  <div class="nav-divider"></div>
+  
+  <div class="nav-group filter-nav">
+    <button id="btnBorrowed" class="filter">📕 대출 중만 보기</button>
+    <button id="btnNewest" class="filter" style="background:#7c3aed;">📈 최신순</button>
+    <button id="btnRecent" style="background:#15803d;">🆕 최근 30일</button>
+  </div>
+  
+  <div class="nav-divider"></div>
+  
+  <div class="nav-group action-nav">
+    <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+    <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
+  </div>
 </nav>
 
 <div id="librarySection">
@@ -136,5 +150,3 @@
 
 </body>
 </html>
-
-

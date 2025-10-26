@@ -100,31 +100,53 @@ function showToast(message, duration = 3000) {
 /* ====== 검색 ====== */
 function addSearch(inputId, tableId) {
   const input = document.getElementById(inputId);
+  
+  // 기존 이벤트 리스너 제거 (중복 방지)
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  
   let timer;
-  input.addEventListener('input', e => {
+  newInput.addEventListener('input', e => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const q = e.target.value.toLowerCase();
-      const originalData = window.allTableData[tableId];
+      const q = e.target.value.trim().toLowerCase();
+      
+      // 원본 데이터 가져오기 (검색 전 상태)
+      let sourceData;
+      if (tableId === 'libraryTable') {
+        sourceData = window.originalLibraryData || window.allTableData[tableId];
+      } else {
+        sourceData = window.booksData || window.allTableData[tableId];
+      }
       
       if (!q) {
-        window.renderTable(originalData, tableId, tableId === 'libraryTable');
-      } else {
-        const header = originalData[0];
-        const filtered = originalData.filter((row, idx) => {
-          if (idx === 0) return true; // 헤더 포함
-          return row.some(cell => String(cell).toLowerCase().includes(q));
-        });
-        
-        // 필터된 데이터를 저장하고 재렌더링
-        const withQR = tableId === 'libraryTable';
-        window.allTableData[tableId] = filtered;
+        // 검색어가 없으면 원본 데이터로 복원
         window.currentPage[tableId] = 1;
-        window.renderTableWithPagination(filtered, tableId, withQR);
+        window.renderTable(sourceData, tableId, tableId === 'libraryTable');
+      } else {
+        // 검색 수행
+        const filtered = [sourceData[0]]; // 헤더 포함
+        
+        for (let i = 1; i < sourceData.length; i++) {
+          const row = sourceData[i];
+          const rowText = row.join(' ').toLowerCase();
+          if (rowText.includes(q)) {
+            filtered.push(row);
+          }
+        }
+        
+        // 검색 결과 렌더링 (원본 데이터는 유지)
+        window.currentPage[tableId] = 1;
+        const tempData = window.allTableData[tableId]; // 백업
+        window.allTableData[tableId] = filtered;
+        window.renderTableWithPagination(filtered, tableId, tableId === 'libraryTable');
         
         // 페이지네이션 업데이트
         const paginationId = tableId === 'loanTable' ? 'loanPagination' : 'libraryPagination';
         window.createPagination(tableId, paginationId, filtered.length - 1);
+        
+        // 원본 데이터 복원 (다음 검색을 위해)
+        window.allTableData[tableId] = tempData;
       }
     }, 150);
   });
