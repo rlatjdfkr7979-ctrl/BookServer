@@ -88,12 +88,74 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   addSearch('searchLibrary', 'libraryTable');
 });
 
+/* ====== 필터 함수 ====== */
+function applyAllFilters() {
+  const isLoanView = !document.getElementById('loanSection').classList.contains('hidden');
+  const targetTableId = isLoanView ? 'loanTable' : 'libraryTable';
+  const sourceData = isLoanView ? window.booksData : originalLibraryData;
+  
+  let dataToFilter = [...sourceData];
+  
+  // 최신 순 정렬 적용
+  if (newestOn) {
+    dataToFilter = [dataToFilter[0], ...dataToFilter.slice(1).reverse()];
+  }
+  
+  // 필터링 적용
+  const header = dataToFilter[0];
+  const statusIdx = findColIndex(header, ['상태', '대출여부']);
+  const dateIdx = findColIndex(header, ['등록일', '일자', '날짜', '입고일', '구입일', '대출일']);
+  const filteredData = [dataToFilter[0]]; // 헤더 보존
+  
+  for (let i = 1; i < dataToFilter.length; i++) {
+    const row = dataToFilter[i];
+    let shouldShow = true;
+    
+    // 대출 중 필터 적용
+    if (borrowedOn) {
+      const status = row[statusIdx] || '';
+      const statusInfo = row._statusInfo;
+      const isBorrowed = statusInfo ? 
+        (statusInfo.status === '대출' || statusInfo.status === '연체') :
+        /(대출|대여|연체)/.test(status);
+      if (!isBorrowed) shouldShow = false;
+    }
+    
+    // 30일 필터 적용
+    if (recentOn && dateIdx !== -1) {
+      const dateText = row[dateIdx] || '';
+      const bookDate = new Date(dateText);
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30*24*60*60*1000);
+      const isRecent = !isNaN(bookDate) && bookDate >= thirtyDaysAgo;
+      if (!isRecent) shouldShow = false;
+    }
+    
+    if (shouldShow) filteredData.push(row);
+  }
+  
+  // 필터된 데이터로 테이블 재렌더링
+  currentPage[targetTableId] = 1;
+  renderTable(filteredData, targetTableId, !isLoanView);
+  
+  // 검색 기능 다시 바인딩
+  if (isLoanView) {
+    addSearch('searchLoans', 'loanTable');
+  } else {
+    addSearch('searchLibrary', 'libraryTable');
+  }
+}
+
 /* ====== 버튼 이벤트 핸들러 ====== */
 document.getElementById('btnLoans').onclick = () => {
   document.getElementById('librarySection').classList.add('hidden');
   document.getElementById('loanSection').classList.remove('hidden');
   document.getElementById('btnLoans').classList.add('active');
   document.getElementById('btnLibrary').classList.remove('active');
+  
+  // 필터 재적용 (대출현황에서도 필터 작동)
+  applyAllFilters();
+  window.scrollTo(0, 0);
 };
 
 document.getElementById('btnLibrary').onclick = () => {
@@ -101,6 +163,82 @@ document.getElementById('btnLibrary').onclick = () => {
   document.getElementById('librarySection').classList.remove('hidden');
   document.getElementById('btnLibrary').classList.add('active');
   document.getElementById('btnLoans').classList.remove('active');
+  
+  // 필터 재적용 (이전 상태 유지)
+  applyAllFilters();
+  window.scrollTo(0, 0);
+};
+
+document.getElementById('btnBorrowed').onclick = () => {
+  // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
+  if (!document.getElementById('librarySection').classList.contains('hidden') === false) {
+    document.getElementById('librarySection').classList.remove('hidden');
+    document.getElementById('loanSection').classList.add('hidden');
+    document.getElementById('btnLibrary').classList.add('active');
+    document.getElementById('btnLoans').classList.remove('active');
+  }
+  
+  borrowedOn = !borrowedOn;
+  document.getElementById('btnBorrowed').classList.toggle('active', borrowedOn);
+  
+  // 모든 필터 재적용
+  applyAllFilters();
+  
+  // 페이지와 테이블 스크롤을 맨 위로 이동
+  window.scrollTo(0, 0);
+  const tableWrap = document.querySelector('#librarySection .table-wrap');
+  if (tableWrap) tableWrap.scrollTop = 0;
+};
+
+document.getElementById('btnNewest').onclick = () => {
+  newestOn = !newestOn;
+  document.getElementById('btnNewest').classList.toggle('active', newestOn);
+  
+  // 버튼 텍스트 변경
+  if (newestOn) {
+    document.getElementById('btnNewest').innerHTML = '📉 오래된 순으로 보기';
+  } else {
+    document.getElementById('btnNewest').innerHTML = '📈 최신 도서 순으로 보기';
+  }
+  
+  // 모든 필터 재적용
+  applyAllFilters();
+  
+  // 페이지와 테이블 스크롤을 맨 위로 이동
+  window.scrollTo(0, 0);
+  const isLoanView = !document.getElementById('loanSection').classList.contains('hidden');
+  const tableWrap = document.querySelector(isLoanView ? '#loanSection .table-wrap' : '#librarySection .table-wrap');
+  if (tableWrap) tableWrap.scrollTop = 0;
+};
+
+document.getElementById('btnRecent').onclick = () => {
+  // 등록일 컬럼이 있는지 확인
+  const header = originalLibraryData[0];
+  const dateIdx = findColIndex(header, ['등록일', '일자', '날짜', '입고일', '구입일']);
+  
+  if (dateIdx === -1) {
+    alert('📅 등록일 정보가 없어서 최근 30일 필터를 사용할 수 없습니다.\n\nCSV 파일에 "등록일", "일자", "날짜" 등의 컬럼을 추가해주세요.');
+    return;
+  }
+  
+  // 대출 현황 화면에서 클릭한 경우 전체 도서목록으로 자동 전환
+  if (!document.getElementById('librarySection').classList.contains('hidden') === false) {
+    document.getElementById('librarySection').classList.remove('hidden');
+    document.getElementById('loanSection').classList.add('hidden');
+    document.getElementById('btnLibrary').classList.add('active');
+    document.getElementById('btnLoans').classList.remove('active');
+  }
+  
+  recentOn = !recentOn;
+  document.getElementById('btnRecent').classList.toggle('active', recentOn);
+  
+  // 모든 필터 재적용
+  applyAllFilters();
+  
+  // 페이지와 테이블 스크롤을 맨 위로 이동
+  window.scrollTo(0, 0);
+  const tableWrap = document.querySelector('#librarySection .table-wrap');
+  if (tableWrap) tableWrap.scrollTop = 0;
 };
 
 document.getElementById('btnAddBook').onclick = () => {
