@@ -260,6 +260,12 @@ tr.overdue td {
   background: #fee2e2 !important; /* 연체 - 빨간색 */
 }
 
+tr.lost-unavailable td {
+  background: #f1f5f9 !important; /* 분실/확인불가 - 회색 */
+  color: #64748b; /* 텍스트도 회색으로 */
+  opacity: 0.7; /* 약간 투명하게 */
+}
+
 /* QR 열은 고정 폭으로 항상 보이게 */
 #libraryTable th.qr-col,
 #libraryTable td.qr-col {

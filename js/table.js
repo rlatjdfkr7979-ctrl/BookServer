@@ -195,7 +195,9 @@ function renderTableWithPagination(rows, id, withQR = false) {
         tr.classList.add(statusInfo.className);
       } else {
         // 기존 방식으로 fallback
-        if (rowStatus.includes('연체')) {
+        if (rowStatus.includes('분실/확인불가') || rowStatus.includes('분실') || rowStatus.includes('확인불가')) {
+          tr.classList.add('lost-unavailable');
+        } else if (rowStatus.includes('연체')) {
           tr.classList.add('overdue');
         } else if (rowStatus.includes('대출') || rowStatus.includes('대여')) {
           tr.classList.add('borrowed');
