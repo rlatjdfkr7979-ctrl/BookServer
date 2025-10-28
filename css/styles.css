@@ -261,9 +261,9 @@ tr.overdue td {
 }
 
 tr.lost-unavailable td {
-  background: #e9d5ff !important; /* 분실/확인불가 - 보라색 */
-  color: #7c3aed; /* 텍스트도 보라색으로 */
-  opacity: 0.8;
+  background: #f1f5f9 !important; /* 분실/확인불가 - 회색 */
+  color: #64748b; /* 텍스트도 회색으로 */
+  opacity: 0.7; /* 약간 투명하게 */
 }
 
 /* QR 열은 고정 폭으로 항상 보이게 */
