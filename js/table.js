@@ -185,21 +185,27 @@ function renderTableWithPagination(rows, id, withQR = false) {
     if (withQR) {
       const titleIdx = findColIndex(header, ['제목', '도서명']);
       const codeIdx = findColIndex(header, ['코드', '코드번호']);
-      const statusIdx = findColIndex(header, ['상태', '대출여부']);
+      const statusIdx = findColIndex(header, ['상태']); // 분실/확인불가는 '상태' 컬럼에서만 찾기
+      const loanStatusIdx = findColIndex(header, ['대출여부']); // 대출 상태는 별도로 찾기
       
       // 상태에 따른 행 색상 적용
       const rowStatus = rows[i][statusIdx] || '';
+      const loanStatus = rows[i][loanStatusIdx] || '';
       const statusInfo = rows[i]._statusInfo;
       
       if (statusInfo && statusInfo.className) {
         tr.classList.add(statusInfo.className);
       } else {
         // 기존 방식으로 fallback
+        // 먼저 상태 컬럼에서 분실/확인불가 확인
         if (rowStatus.includes('분실/확인불가') || rowStatus.includes('분실') || rowStatus.includes('확인불가')) {
+          console.log('분실/확인불가 도서 발견:', rowStatus, rows[i]);
           tr.classList.add('lost-unavailable');
-        } else if (rowStatus.includes('연체')) {
+        } 
+        // 그 다음 대출여부 컬럼에서 연체/대출 확인
+        else if (loanStatus.includes('연체')) {
           tr.classList.add('overdue');
-        } else if (rowStatus.includes('대출') || rowStatus.includes('대여')) {
+        } else if (loanStatus.includes('대출') || loanStatus.includes('대여')) {
           tr.classList.add('borrowed');
         }
       }
@@ -220,7 +226,7 @@ function renderTableWithPagination(rows, id, withQR = false) {
       const code = rows[i][codeIdx];
       const author = rows[i][findColIndex(header, ['지은이', '저자'])];
       const renter = rows[i][findColIndex(header, ['대출자', '대여자'])];
-      const status = rows[i][findColIndex(header, ['상태', '대출여부'])];
+      const status = rowStatus || loanStatus; // 상태 컬럼 또는 대출여부 컬럼 값
       const btn = document.createElement('button');
       btn.className = 'qr-btn';
       btn.textContent = '📷 QR';
