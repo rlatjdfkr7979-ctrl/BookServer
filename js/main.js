@@ -246,7 +246,7 @@ document.getElementById('btnRecent').onclick = () => {
 };
 
 document.getElementById('btnAddBook').onclick = () => {
-  window.open(FORM_URL, '_blank');
+  window.open(ADD_BOOK_FORM_URL, '_blank');
 };
 
 document.getElementById('btnDooraySync').onclick = () => {
