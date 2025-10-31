@@ -3,7 +3,7 @@
    ======================================== */
 
 // Google Forms 설정
-const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform";
+const FORM_URL = "https://docs.google.com/forms/d/1dg8FY6trFB5nLojhsbsgaDNl9ypzO4_tLRm_gH7QRRc/edit";
 const ENTRY_IDS = {
   code: "entry.32105598",
   title: "entry.1234176416",
@@ -38,3 +38,4 @@ window.DOORAY_ENDPOINTS = {
     send: (channelId) => `${window.DOORAY_CONFIG.baseUrl}/v1/messenger/channels/${channelId}/messages`
   }
 };
+
