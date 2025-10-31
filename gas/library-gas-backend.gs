@@ -8,17 +8,21 @@
 
 const SCRIPT_PROPERTIES = PropertiesService.getScriptProperties();
 
-const CONFIG = {
-  spreadsheetId: getScriptProperty('SPREADSHEET_ID', '15q9wgugYHKXbaYE5tZibAd1TGUG_bkQbnicpGT6AYq4'),
-  booksSheetName: getScriptProperty('BOOKS_SHEET_NAME', '도서 대여 기록'),
-  librarySheetName: getScriptProperty('LIBRARY_SHEET_NAME', '도서목록'),
-  wikiLogSheetName: getScriptProperty('WIKI_LOG_SHEET_NAME', ''),
-  githubToken: getScriptProperty('GITHUB_TOKEN', ''),
-  githubRepo: getScriptProperty('GITHUB_REPO', ''),
-  libraryCsvPath: getScriptProperty('LIBRARY_CSV_PATH', 'library.csv'),
-  booksCsvPath: getScriptProperty('BOOKS_CSV_PATH', 'books.csv'),
-  githubBranch: getScriptProperty('GITHUB_BRANCH', 'main')
-};
+const CONFIG = {};
+
+function reloadConfig() {
+  CONFIG.spreadsheetId = getScriptProperty('SPREADSHEET_ID', '15q9wgugYHKXbaYE5tZibAd1TGUG_bkQbnicpGT6AYq4');
+  CONFIG.booksSheetName = getScriptProperty('BOOKS_SHEET_NAME', '도서 대여 기록');
+  CONFIG.librarySheetName = getScriptProperty('LIBRARY_SHEET_NAME', '도서목록');
+  CONFIG.wikiLogSheetName = getScriptProperty('WIKI_LOG_SHEET_NAME', '');
+  CONFIG.githubToken = getScriptProperty('GITHUB_TOKEN', '');
+  CONFIG.githubRepo = getScriptProperty('GITHUB_REPO', '');
+  CONFIG.libraryCsvPath = getScriptProperty('LIBRARY_CSV_PATH', 'library.csv');
+  CONFIG.booksCsvPath = getScriptProperty('BOOKS_CSV_PATH', 'books.csv');
+  CONFIG.githubBranch = getScriptProperty('GITHUB_BRANCH', 'main');
+}
+
+reloadConfig();
 
 function getScriptProperty(key, fallback) {
   const value = SCRIPT_PROPERTIES.getProperty(key);
@@ -39,6 +43,7 @@ function openSpreadsheet() {
 
 
 function doGet(e) {
+  reloadConfig();
   try {
     const params = e && e.parameter ? e.parameter : {};
     const action = (params.action || '').trim();
@@ -78,6 +83,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  reloadConfig();
   try {
     const raw = e.postData && e.postData.contents ? e.postData.contents : '{}';
     const data = JSON.parse(raw);
@@ -172,6 +178,7 @@ function updateSheetConfig(payload) {
     if (updates.librarySheetName) {
       CONFIG.librarySheetName = updates.librarySheetName;
     }
+    reloadConfig();
   }
 }
 
