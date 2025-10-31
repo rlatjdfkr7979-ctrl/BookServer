@@ -28,12 +28,19 @@ function updateDoorayButtonStatus() {
 }
 
 /* ====== 메인 초기화 ====== */
-Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library]) => {
+window.loadDataSets().then(({ source, books, library, error }) => {
   window.booksData = books;
   window.libraryData = library;
   renderTable(books, 'loanTable');
   
   updateDoorayButtonStatus();
+
+  // 데이터 소스에 따른 알림
+  if (source === 'gas') {
+    console.info('✅ Google Sheets에서 도서 데이터를 불러왔습니다.');
+  } else if (error) {
+    showToast('⚠️ Google Sheets 연결 실패로 CSV 데이터를 사용합니다.');
+  }
 
   const bh = books[0].map(norm);
   const bDateIdx = findColIndex(bh, ['등록일', '대출일', '일자']);
@@ -259,6 +266,8 @@ function showDoorayModal() {
   modal.style.display = 'flex';
   
   document.getElementById('gasBackendUrl').value = localStorage.getItem('gas_backend_url') || '';
+  document.getElementById('booksSheetName').value = localStorage.getItem('gas_books_sheet') || 'Books';
+  document.getElementById('librarySheetName').value = localStorage.getItem('gas_library_sheet') || 'Library';
   document.getElementById('wikiId').value = localStorage.getItem('dooray_wiki_id') || '';
   document.getElementById('pageId').value = localStorage.getItem('dooray_page_id') || '';
 }
@@ -386,6 +395,8 @@ async function syncLibraryToWiki() {
 
 async function saveDoorayConfig() {
   const gasUrl = document.getElementById('gasBackendUrl').value.trim();
+  const booksSheet = document.getElementById('booksSheetName').value.trim();
+  const librarySheet = document.getElementById('librarySheetName').value.trim();
   const wikiId = document.getElementById('wikiId').value.trim();
   const pageId = document.getElementById('pageId').value.trim();
   
@@ -394,7 +405,16 @@ async function saveDoorayConfig() {
     return;
   }
   
-  localStorage.setItem('gas_backend_url', gasUrl);
+  // Google Apps Script URL 저장
+  window.setGasBackendUrl(gasUrl);
+  
+  // 시트 이름 저장
+  window.setGasSheetNames({
+    booksSheet: booksSheet || 'Books',
+    librarySheet: librarySheet || 'Library'
+  });
+  
+  // Dooray Wiki 정보 저장
   localStorage.setItem('dooray_wiki_id', wikiId);
   localStorage.setItem('dooray_page_id', pageId);
   
@@ -405,7 +425,7 @@ async function saveDoorayConfig() {
   window.doorayIntegration = new DoorayIntegration();
   updateDoorayButtonStatus();
   
-  showToast('✅ 설정이 저장되었습니다!');
+  showToast('✅ 설정이 저장되었습니다! 페이지를 새로고침하면 Google Sheets에서 데이터를 불러옵니다.');
   
   setTimeout(async () => {
     const result = await testDoorayConnection();
