@@ -3,8 +3,8 @@
    ======================================== */
 
 (function() {
-  const DEFAULT_BOOKS_SHEET = 'Books';
-  const DEFAULT_LIBRARY_SHEET = 'Library';
+  const DEFAULT_BOOKS_SHEET = '도서 대여 기록';
+  const DEFAULT_LIBRARY_SHEET = '도서목록';
 
   const DATA_CONFIG = {
     backendUrl: (localStorage.getItem('gas_backend_url') || '').trim(),
