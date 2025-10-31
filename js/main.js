@@ -278,9 +278,10 @@ function showDoorayModal() {
   modal.style.display = 'flex';
 
   document.getElementById('gasBackendUrl').value = localStorage.getItem('gas_backend_url') || '';
-  const { booksSheet = 'Books', librarySheet = 'Library' } = window.DATA_CONFIG || {};
+  const { booksSheet = 'Books', librarySheet = 'Library', spreadsheetId } = window.DATA_CONFIG || {};
   document.getElementById('booksSheetName').value = localStorage.getItem('gas_books_sheet') || booksSheet || '';
   document.getElementById('librarySheetName').value = localStorage.getItem('gas_library_sheet') || librarySheet || '';
+  document.getElementById('spreadsheetId').value = localStorage.getItem('gas_spreadsheet_id') || spreadsheetId || '';
   document.getElementById('wikiId').value = localStorage.getItem('dooray_wiki_id') || '';
   document.getElementById('pageId').value = localStorage.getItem('dooray_page_id') || '';
 }
@@ -412,6 +413,7 @@ async function saveDoorayConfig() {
   const pageId = document.getElementById('pageId').value.trim();
   const booksSheet = document.getElementById('booksSheetName').value.trim() || 'Books';
   const librarySheet = document.getElementById('librarySheetName').value.trim() || 'Library';
+  const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
 
   if (!gasUrl) {
     showToast('⚠️ Google Apps Script URL을 입력해주세요.');
@@ -421,6 +423,11 @@ async function saveDoorayConfig() {
   localStorage.setItem('gas_backend_url', gasUrl);
   localStorage.setItem('gas_books_sheet', booksSheet);
   localStorage.setItem('gas_library_sheet', librarySheet);
+  if (spreadsheetId) {
+    localStorage.setItem('gas_spreadsheet_id', spreadsheetId);
+  } else {
+    localStorage.removeItem('gas_spreadsheet_id');
+  }
   localStorage.setItem('dooray_wiki_id', wikiId);
   localStorage.setItem('dooray_page_id', pageId);
 
@@ -430,9 +437,33 @@ async function saveDoorayConfig() {
 
   window.setGasBackendUrl(gasUrl);
   window.setGasSheetNames({ booksSheet, librarySheet });
+  window.setGasSpreadsheetId(spreadsheetId);
 
   window.doorayIntegration = new DoorayIntegration();
   updateDoorayButtonStatus();
+
+  try {
+    const response = await fetch(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'updateSheetConfig',
+        spreadsheetId,
+        booksSheet,
+        librarySheet
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success && result.data) {
+      window.applyGasBackendConfig(result.data);
+    } else if (!result.success) {
+      showToast('⚠️ 시트 설정 저장 실패: ' + (result.message || '알 수 없는 오류'));
+    }
+  } catch (configError) {
+    console.warn('⚠️ 시트 설정을 저장하는 중 오류 발생:', configError);
+  }
 
   showToast('✅ 설정이 저장되었습니다!');
 

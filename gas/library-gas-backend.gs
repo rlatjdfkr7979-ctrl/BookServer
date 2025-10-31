@@ -8,25 +8,46 @@
 
 const SCRIPT_PROPERTIES = PropertiesService.getScriptProperties();
 
-const CONFIG = {
-  spreadsheetId: getScriptProperty('SPREADSHEET_ID', '15q9wgugYHKXbaYE5tZibAd1TGUG_bkQbnicpGT6AYq4'),
-  booksSheetName: getScriptProperty('BOOKS_SHEET_NAME', '도서 대여 기록'),
-  librarySheetName: getScriptProperty('LIBRARY_SHEET_NAME', '도서목록'),
-  wikiLogSheetName: getScriptProperty('WIKI_LOG_SHEET_NAME', ''),
-  githubToken: getScriptProperty('GITHUB_TOKEN', ''),
-  githubRepo: getScriptProperty('GITHUB_REPO', ''),
-  libraryCsvPath: getScriptProperty('LIBRARY_CSV_PATH', 'library.csv'),
-  booksCsvPath: getScriptProperty('BOOKS_CSV_PATH', 'books.csv'),
-  githubBranch: getScriptProperty('GITHUB_BRANCH', 'main')
-};
+const CONFIG = {};
+
+function reloadConfig() {
+  CONFIG.spreadsheetId = coerceConfigValue(
+    getScriptProperty('SPREADSHEET_ID', ''),
+    '15q9wgugYHKXbaYE5tZibAd1TGUG_bkQbnicpGT6AYq4'
+  );
+  CONFIG.booksSheetName = coerceConfigValue(
+    getScriptProperty('BOOKS_SHEET_NAME', ''),
+    '도서 대여 기록'
+  );
+  CONFIG.librarySheetName = coerceConfigValue(
+    getScriptProperty('LIBRARY_SHEET_NAME', ''),
+    '도서목록'
+  );
+  CONFIG.wikiLogSheetName = coerceConfigValue(getScriptProperty('WIKI_LOG_SHEET_NAME', ''), '');
+  CONFIG.githubToken = coerceConfigValue(getScriptProperty('GITHUB_TOKEN', ''), '');
+  CONFIG.githubRepo = coerceConfigValue(getScriptProperty('GITHUB_REPO', ''), '');
+  CONFIG.libraryCsvPath = coerceConfigValue(getScriptProperty('LIBRARY_CSV_PATH', ''), 'library.csv');
+  CONFIG.booksCsvPath = coerceConfigValue(getScriptProperty('BOOKS_CSV_PATH', ''), 'books.csv');
+  CONFIG.githubBranch = coerceConfigValue(getScriptProperty('GITHUB_BRANCH', ''), 'main');
+}
+
+reloadConfig();
 
 function getScriptProperty(key, fallback) {
   const value = SCRIPT_PROPERTIES.getProperty(key);
   return value !== null && value !== undefined ? value : fallback;
 }
 
-function openSpreadsheet() {
-  const id = CONFIG.spreadsheetId;
+function coerceConfigValue(value, fallback) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed) {
+    return trimmed;
+  }
+  return fallback;
+}
+
+function openSpreadsheet(overrideId) {
+  const id = coerceConfigValue(overrideId, CONFIG.spreadsheetId);
   Logger.log('📋 현재 SPREADSHEET_ID:', id);
 
   if (!id) {
@@ -39,14 +60,16 @@ function openSpreadsheet() {
 
 
 function doGet(e) {
+  reloadConfig();
   try {
     const params = e && e.parameter ? e.parameter : {};
     const action = (params.action || '').trim();
+    const spreadsheetId = (params.spreadsheetId || '').trim();
 
     switch (action) {
       case 'getSheetData': {
         const sheetName = (params.sheet || '').trim();
-        const values = getSheetValues(sheetName);
+        const values = getSheetValues(sheetName, spreadsheetId);
         return respondJson({ success: true, data: values }, params.callback);
       }
       case 'getConfig': {
@@ -78,19 +101,25 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  reloadConfig();
   try {
     const raw = e.postData && e.postData.contents ? e.postData.contents : '{}';
     const data = JSON.parse(raw);
     const action = (data.action || '').trim();
+    const spreadsheetId = typeof data.spreadsheetId === 'string' ? data.spreadsheetId.trim() : '';
 
     switch (action) {
       case 'getSheetData': {
-        const values = getSheetValues(data.sheet || '');
+        const values = getSheetValues(data.sheet || '', spreadsheetId);
         return respondJson({ success: true, data: values }, data.callback);
       }
       case 'updateSheetConfig': {
-        updateSheetConfig(data);
-        return respondJson({ success: true, message: '시트 구성이 저장되었습니다.' }, data.callback);
+        const updatedConfig = updateSheetConfig(data);
+        return respondJson({
+          success: true,
+          message: '시트 구성이 저장되었습니다.',
+          data: updatedConfig
+        }, data.callback);
       }
       case 'updateWiki': {
         logWikiSnapshot(data);
@@ -114,8 +143,8 @@ function doPost(e) {
   }
 }
 
-function getSheetValues(requestedName) {
-  const spreadsheet = openSpreadsheet();
+function getSheetValues(requestedName, spreadsheetId) {
+  const spreadsheet = openSpreadsheet(spreadsheetId);
   const normalized = (requestedName || '').toLowerCase();
 
   let targetName = requestedName;
@@ -155,24 +184,44 @@ function logWikiSnapshot(payload) {
 function updateSheetConfig(payload) {
   const updates = {};
 
+  if (typeof payload.spreadsheetId === 'string') {
+    const trimmedId = payload.spreadsheetId.trim();
+    if (trimmedId) {
+      SCRIPT_PROPERTIES.setProperty('SPREADSHEET_ID', trimmedId);
+      updates.spreadsheetId = trimmedId;
+    }
+  }
+
   if (typeof payload.booksSheet === 'string' && payload.booksSheet.trim()) {
-    SCRIPT_PROPERTIES.setProperty('BOOKS_SHEET_NAME', payload.booksSheet.trim());
-    updates.booksSheetName = payload.booksSheet.trim();
+    const trimmedBooks = payload.booksSheet.trim();
+    SCRIPT_PROPERTIES.setProperty('BOOKS_SHEET_NAME', trimmedBooks);
+    updates.booksSheetName = trimmedBooks;
   }
 
   if (typeof payload.librarySheet === 'string' && payload.librarySheet.trim()) {
-    SCRIPT_PROPERTIES.setProperty('LIBRARY_SHEET_NAME', payload.librarySheet.trim());
-    updates.librarySheetName = payload.librarySheet.trim();
+    const trimmedLibrary = payload.librarySheet.trim();
+    SCRIPT_PROPERTIES.setProperty('LIBRARY_SHEET_NAME', trimmedLibrary);
+    updates.librarySheetName = trimmedLibrary;
   }
 
   if (Object.keys(updates).length > 0) {
+    if (updates.spreadsheetId) {
+      CONFIG.spreadsheetId = updates.spreadsheetId;
+    }
     if (updates.booksSheetName) {
       CONFIG.booksSheetName = updates.booksSheetName;
     }
     if (updates.librarySheetName) {
       CONFIG.librarySheetName = updates.librarySheetName;
     }
+    reloadConfig();
   }
+
+  return {
+    spreadsheetId: CONFIG.spreadsheetId,
+    booksSheetName: CONFIG.booksSheetName,
+    librarySheetName: CONFIG.librarySheetName
+  };
 }
 
 // =============================================================

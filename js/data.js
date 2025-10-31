@@ -9,8 +9,35 @@
   const DATA_CONFIG = {
     backendUrl: (localStorage.getItem('gas_backend_url') || '').trim(),
     booksSheet: (localStorage.getItem('gas_books_sheet') || DEFAULT_BOOKS_SHEET).trim(),
-    librarySheet: (localStorage.getItem('gas_library_sheet') || DEFAULT_LIBRARY_SHEET).trim()
+    librarySheet: (localStorage.getItem('gas_library_sheet') || DEFAULT_LIBRARY_SHEET).trim(),
+    spreadsheetId: (localStorage.getItem('gas_spreadsheet_id') || '').trim()
   };
+
+  function applyBackendConfig(config = {}) {
+    if (config.spreadsheetId && typeof config.spreadsheetId === 'string') {
+      const trimmed = config.spreadsheetId.trim();
+      if (trimmed) {
+        DATA_CONFIG.spreadsheetId = trimmed;
+        localStorage.setItem('gas_spreadsheet_id', trimmed);
+      }
+    }
+
+    if (config.booksSheetName && typeof config.booksSheetName === 'string') {
+      const trimmed = config.booksSheetName.trim();
+      if (trimmed) {
+        DATA_CONFIG.booksSheet = trimmed;
+        localStorage.setItem('gas_books_sheet', trimmed);
+      }
+    }
+
+    if (config.librarySheetName && typeof config.librarySheetName === 'string') {
+      const trimmed = config.librarySheetName.trim();
+      if (trimmed) {
+        DATA_CONFIG.librarySheet = trimmed;
+        localStorage.setItem('gas_library_sheet', trimmed);
+      }
+    }
+  }
 
   function normalizeRows(rows) {
     if (!Array.isArray(rows)) return [];
@@ -80,6 +107,10 @@
       t: Date.now().toString()
     };
 
+    if (DATA_CONFIG.spreadsheetId) {
+      params.spreadsheetId = DATA_CONFIG.spreadsheetId;
+    }
+
     const result = await jsonpRequest(url, params);
     const payload = result && (result.data || result.values || result.rows);
     const rows = normalizeRows(payload);
@@ -98,6 +129,8 @@
       return { source: 'csv', books, library };
     }
 
+    await refreshBackendConfig();
+
     try {
       const [books, library] = await Promise.all([
         fetchSheetData(DATA_CONFIG.booksSheet || DEFAULT_BOOKS_SHEET),
@@ -114,6 +147,25 @@
     }
   }
 
+  async function refreshBackendConfig() {
+    const url = DATA_CONFIG.backendUrl;
+    if (!url) return;
+
+    try {
+      const cleanUrl = url.replace(/\?.*$/, '');
+      const result = await jsonpRequest(cleanUrl, {
+        action: 'getConfig',
+        t: Date.now().toString()
+      });
+
+      if (result && result.success && result.data) {
+        applyBackendConfig(result.data);
+      }
+    } catch (error) {
+      console.warn('⚠️ GAS 설정 정보를 불러오지 못했습니다.', error);
+    }
+  }
+
   function setBackendUrl(url) {
     DATA_CONFIG.backendUrl = (url || '').trim();
   }
@@ -127,10 +179,16 @@
     }
   }
 
+  function setSpreadsheetId(id) {
+    DATA_CONFIG.spreadsheetId = (id || '').trim();
+  }
+
   // 전역 등록
   window.DATA_CONFIG = DATA_CONFIG;
   window.fetchSheetDataFromGas = fetchSheetData;
   window.loadDataSets = loadDataSets;
   window.setGasBackendUrl = setBackendUrl;
   window.setGasSheetNames = setSheetNames;
+  window.setGasSpreadsheetId = setSpreadsheetId;
+  window.applyGasBackendConfig = applyBackendConfig;
 })();

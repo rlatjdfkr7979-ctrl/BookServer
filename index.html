@@ -110,6 +110,11 @@
       <div class="status-card">
         <strong>📄 Google Sheets 설정</strong>
         <div style="margin:8px 0;">
+          <label>스프레드시트 ID</label>
+          <input type="text" id="spreadsheetId" placeholder="1AbCdEfGhIjKlmNoPq" 
+                 style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
+        </div>
+        <div style="margin:8px 0;">
           <label>대출 이력 시트 이름</label>
           <input type="text" id="booksSheetName" value="도서 대여 기록"
                  style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
@@ -119,7 +124,7 @@
           <input type="text" id="librarySheetName" value="도서목록"
                  style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
         </div>
-        <small style="color:#6b7280;">Apps Script가 참조할 구글 시트의 탭 이름을 입력하세요.</small>
+        <small style="color:#6b7280;">Apps Script가 참조할 구글 시트 문서의 ID와 탭 이름을 입력하세요.</small>
       </div>
 
       <div class="status-card">
@@ -165,9 +170,13 @@
 <script src="js/main.js"></script>
 
 <script>
-  // Google Sheets 실제 시트 이름을 브라우저 저장소에 저장
-  localStorage.setItem('gas_books_sheet', '도서 대여 기록');
-  localStorage.setItem('gas_library_sheet', '도서목록');
+  // 기본 시트 이름이 비어 있을 때만 초기값을 설정합니다.
+  if (!localStorage.getItem('gas_books_sheet')) {
+    localStorage.setItem('gas_books_sheet', '도서 대여 기록');
+  }
+  if (!localStorage.getItem('gas_library_sheet')) {
+    localStorage.setItem('gas_library_sheet', '도서목록');
+  }
 </script>
 
 </body>
