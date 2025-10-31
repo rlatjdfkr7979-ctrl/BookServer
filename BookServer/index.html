@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 울산도시공사 도서관리 시스템</title>
+<!-- CSS -->
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<h1>📚 울산도시공사 도서관리 시스템</h1>
+
+<!-- 주요 네비게이션 -->
+<nav>
+  <div class="nav-group main-nav">
+    <button id="btnLibrary" class="active">📗 전체 도서목록</button>
+    <button id="btnLoans">📘 대출 현황</button>
+  </div>
+  
+  <div class="nav-divider"></div>
+  
+  <div class="nav-group filter-nav">
+    <button id="btnBorrowed" class="filter">📕 대출 중만 보기</button>
+    <button id="btnNewest" class="filter" style="background:#7c3aed;">📈 최신 도서 순으로 보기</button>
+    <button id="btnRecent" style="background:#15803d;">🆕 최근 30일</button>
+  </div>
+  
+  <div class="nav-divider"></div>
+  
+  <div class="nav-group action-nav">
+    <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+    <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
+  </div>
+</nav>
+
+<div id="librarySection">
+  <input type="text" id="searchLibrary" placeholder="제목/도서명, 저자, 출판사 검색...">
+  <div class="table-wrap"><table id="libraryTable"></table></div>
+  <div id="libraryPagination" class="pagination"></div>
+</div>
+
+<div id="loanSection" class="hidden">
+  <input type="text" id="searchLoans" placeholder="도서명, 대여자, 코드번호 검색...">
+  <div class="table-wrap"><table id="loanTable"></table></div>
+  <div id="loanPagination" class="pagination"></div>
+</div>
+
+<!-- 도서 이력 팝업 -->
+<div id="historyModal">
+  <div class="inner">
+    <div class="content">
+      <h3 id="histTitle">📖 도서 이력</h3>
+      <div id="histContent"></div>
+    </div>
+    <div class="buttons">
+      <button onclick="closeHistory()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 도서 미리보기 모달 -->
+<div id="bookPreviewModal">
+  <div class="inner">
+    <div class="content">
+      <div class="tab-buttons">
+        <button class="tab-button active" onclick="switchTab('preview')">📚 도서 정보</button>
+        <button class="tab-button" onclick="switchTab('history')">📋 대출 이력</button>
+      </div>
+      
+      <div id="previewTab" class="tab-content active">
+        <div id="bookPreviewContent">
+          <div class="loading">📚 도서 정보를 불러오는 중...</div>
+        </div>
+      </div>
+      
+      <div id="historyTab" class="tab-content">
+        <div id="bookHistoryContent"></div>
+      </div>
+    </div>
+    <div class="buttons">
+      <button onclick="closeBookPreview()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dooray 연동 모달 -->
+<div id="doorayModal">
+  <div class="inner">
+    <div class="content">
+      <h3>🔄 Dooray 연동 설정</h3>
+      
+      <div class="status-card">
+        <h4 style="margin:0 0 12px 0;">📊 기능 소개</h4>
+        <ul class="feature-list">
+          <li>도서 대출/반납 현황을 Dooray Wiki에 자동 업데이트</li>
+          <li>Google Apps Script를 통한 안전한 API 연동</li>
+          <li>실시간 도서 통계 동기화</li>
+        </ul>
+      </div>
+
+      <div class="status-card status-warning">
+        <strong>⚙️ Google Apps Script 백엔드 URL</strong>
+        <input type="text" id="gasBackendUrl" placeholder="https://script.google.com/macros/s/..." 
+               style="width:100%;margin:8px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;"
+               value="">
+        <small style="color:#6b7280;">Google Apps Script 웹앱 배포 URL을 입력하세요</small>
+      </div>
+
+      <div class="status-card">
+        <strong>📋 Wiki 정보</strong>
+        <div style="margin:8px 0;">
+          <label>Wiki ID:</label>
+          <input type="text" id="wikiId" placeholder="12345678" 
+                 style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
+        </div>
+        <div style="margin:8px 0;">
+          <label>Page ID:</label>
+          <input type="text" id="pageId" placeholder="87654321" 
+                 style="width:100%;margin:4px 0;padding:8px;border-radius:4px;border:1px solid #cbd5e1;">
+        </div>
+      </div>
+
+      <div id="testResult" class="test-result" style="display:none;"></div>
+
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button onclick="testDoorayConnection()" class="action-button">🧪 연결 테스트</button>
+        <button onclick="syncLibraryToWiki()" class="action-button">📊 Wiki 업데이트</button>
+      </div>
+    </div>
+    <div class="buttons">
+      <button onclick="saveDoorayConfig()" class="action-button" style="width:100%;margin-bottom:8px;">💾 설정 저장</button>
+      <button onclick="closeDoorayModal()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
+
+<footer>© 울산도시공사 도서관리 시스템 | 시스템 문의(김성락 대리 417)</footer>
+
+<!-- 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+
+<!-- JavaScript 모듈 -->
+<script src="js/config.js"></script>
+<script src="js/table.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/dooray.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
+
