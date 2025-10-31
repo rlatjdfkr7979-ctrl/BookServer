@@ -28,65 +28,84 @@ function updateDoorayButtonStatus() {
 }
 
 /* ====== 메인 초기화 ====== */
-Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library]) => {
-  window.booksData = books;
-  window.libraryData = library;
-  renderTable(books, 'loanTable');
-  
-  updateDoorayButtonStatus();
+async function initializeLibraryApp({ showFallbackToast = true } = {}) {
+  try {
+    const dataResult = await window.loadDataSets();
+    const { source, books, library, error } = dataResult;
 
-  const bh = books[0].map(norm);
-  const bDateIdx = findColIndex(bh, ['등록일', '대출일', '일자']);
-  const bCodeIdx = findColIndex(bh, ['코드', '코드번호']);
-  const bStatusIdx = findColIndex(bh, ['상태', '대출여부']);
-  const bUserIdx = findColIndex(bh, ['대여자', '대출자']);
-  const latestByCode = {};
+    window.booksData = books;
+    window.libraryData = library;
 
-  for (let i = 1; i < books.length; i++) {
-    const date = norm(books[i][bDateIdx]);
-    const code = norm(books[i][bCodeIdx]);
-    const status = norm(books[i][bStatusIdx]);
-    const borrower = norm(books[i][bUserIdx]);
-    if (!code) continue;
-    if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: ''};
-    if (status.includes('반납')) latestByCode[code].lastReturn = date;
-    latestByCode[code].status = status;
-    latestByCode[code].borrower = borrower;
-  }
+    window.currentPage.loanTable = 1;
+    window.currentPage.libraryTable = 1;
 
-  const lh = library[0].map(norm);
-  const lCodeIdx = findColIndex(lh, ['코드', '코드번호']);
-  let lStatusIdx = findColIndex(lh, ['상태', '대출여부']);
-  let lUserIdx = findColIndex(lh, ['대여자', '대출자']);
-  if (lStatusIdx === -1) {library[0].push('대출여부'); lStatusIdx = library[0].length - 1;}
-  if (lUserIdx === -1) {library[0].push('대출자'); lUserIdx = library[0].length - 1;}
+    renderTable(books, 'loanTable');
+    updateDoorayButtonStatus();
 
-  for (let i = 1; i < library.length; i++) {
-    const code = norm(library[i][lCodeIdx]);
-    const rec = latestByCode[code];
-    if (!rec) {
-      library[i][lStatusIdx] = '';
-      library[i][lUserIdx] = '';
-      continue;
+    if (source === 'gas') {
+      console.info('✅ Google Sheets에서 도서 데이터를 불러왔습니다.');
+    } else if (error && showFallbackToast) {
+      showToast('⚠️ Google Sheets 연결 실패로 CSV 데이터를 사용합니다.');
     }
-    if (rec.status.includes('반납')) {
-      library[i][lStatusIdx] = '반납';
-      library[i][lUserIdx] = '';
-    } else {
-      library[i][lUserIdx] = rec.borrower || '';
-      const loanRow = books.find(b => norm(b[bCodeIdx]) === code && !b[bStatusIdx].includes('반납'));
-      const loanDate = loanRow ? loanRow[bDateIdx] : '';
-      const loanStatus = calculateLoanStatus(loanDate, rec.status);
-      library[i][lStatusIdx] = loanStatus.displayText;
-      library[i]._statusInfo = loanStatus;
-    }
-  }
 
-  originalLibraryData = [...library];
-  renderTable(library, 'libraryTable', true);
-  addSearch('searchLoans', 'loanTable');
-  addSearch('searchLibrary', 'libraryTable');
-});
+    const bh = books[0].map(norm);
+    const bDateIdx = findColIndex(bh, ['등록일', '대출일', '일자']);
+    const bCodeIdx = findColIndex(bh, ['코드', '코드번호']);
+    const bStatusIdx = findColIndex(bh, ['상태', '대출여부']);
+    const bUserIdx = findColIndex(bh, ['대여자', '대출자']);
+    const latestByCode = {};
+
+    for (let i = 1; i < books.length; i++) {
+      const date = norm(books[i][bDateIdx]);
+      const code = norm(books[i][bCodeIdx]);
+      const status = norm(books[i][bStatusIdx]);
+      const borrower = norm(books[i][bUserIdx]);
+      if (!code) continue;
+      if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: ''};
+      if (status.includes('반납')) latestByCode[code].lastReturn = date;
+      latestByCode[code].status = status;
+      latestByCode[code].borrower = borrower;
+    }
+
+    const lh = library[0].map(norm);
+    const lCodeIdx = findColIndex(lh, ['코드', '코드번호']);
+    let lStatusIdx = findColIndex(lh, ['상태', '대출여부']);
+    let lUserIdx = findColIndex(lh, ['대여자', '대출자']);
+    if (lStatusIdx === -1) {library[0].push('대출여부'); lStatusIdx = library[0].length - 1;}
+    if (lUserIdx === -1) {library[0].push('대출자'); lUserIdx = library[0].length - 1;}
+
+    for (let i = 1; i < library.length; i++) {
+      const code = norm(library[i][lCodeIdx]);
+      const rec = latestByCode[code];
+      if (!rec) {
+        library[i][lStatusIdx] = '';
+        library[i][lUserIdx] = '';
+        continue;
+      }
+      if (rec.status.includes('반납')) {
+        library[i][lStatusIdx] = '반납';
+        library[i][lUserIdx] = '';
+      } else {
+        library[i][lUserIdx] = rec.borrower || '';
+        const loanRow = books.find(b => norm(b[bCodeIdx]) === code && !b[bStatusIdx].includes('반납'));
+        const loanDate = loanRow ? loanRow[bDateIdx] : '';
+        const loanStatus = calculateLoanStatus(loanDate, rec.status);
+        library[i][lStatusIdx] = loanStatus.displayText;
+        library[i]._statusInfo = loanStatus;
+      }
+    }
+
+    originalLibraryData = [...library];
+    renderTable(library, 'libraryTable', true);
+    addSearch('searchLoans', 'loanTable');
+    addSearch('searchLibrary', 'libraryTable');
+  } catch (error) {
+    console.error('❌ 초기 데이터 로드 실패:', error);
+    showToast('❌ 도서 데이터를 불러오는 데 실패했습니다. 새로고침 후 다시 시도해주세요.');
+  }
+}
+
+initializeLibraryApp();
 
 /* ====== 필터 함수 ====== */
 function applyAllFilters() {
@@ -257,8 +276,11 @@ document.getElementById('btnDooraySync').onclick = () => {
 function showDoorayModal() {
   const modal = document.getElementById('doorayModal');
   modal.style.display = 'flex';
-  
+
   document.getElementById('gasBackendUrl').value = localStorage.getItem('gas_backend_url') || '';
+  const { booksSheet = 'Books', librarySheet = 'Library' } = window.DATA_CONFIG || {};
+  document.getElementById('booksSheetName').value = localStorage.getItem('gas_books_sheet') || booksSheet || '';
+  document.getElementById('librarySheetName').value = localStorage.getItem('gas_library_sheet') || librarySheet || '';
   document.getElementById('wikiId').value = localStorage.getItem('dooray_wiki_id') || '';
   document.getElementById('pageId').value = localStorage.getItem('dooray_page_id') || '';
 }
@@ -388,26 +410,35 @@ async function saveDoorayConfig() {
   const gasUrl = document.getElementById('gasBackendUrl').value.trim();
   const wikiId = document.getElementById('wikiId').value.trim();
   const pageId = document.getElementById('pageId').value.trim();
-  
+  const booksSheet = document.getElementById('booksSheetName').value.trim() || 'Books';
+  const librarySheet = document.getElementById('librarySheetName').value.trim() || 'Library';
+
   if (!gasUrl) {
     showToast('⚠️ Google Apps Script URL을 입력해주세요.');
     return;
   }
-  
+
   localStorage.setItem('gas_backend_url', gasUrl);
+  localStorage.setItem('gas_books_sheet', booksSheet);
+  localStorage.setItem('gas_library_sheet', librarySheet);
   localStorage.setItem('dooray_wiki_id', wikiId);
   localStorage.setItem('dooray_page_id', pageId);
-  
+
   window.DOORAY_CONFIG.backendUrl = gasUrl;
   window.DOORAY_CONFIG.wikiId = wikiId;
   window.DOORAY_CONFIG.pageId = pageId;
-  
+
+  window.setGasBackendUrl(gasUrl);
+  window.setGasSheetNames({ booksSheet, librarySheet });
+
   window.doorayIntegration = new DoorayIntegration();
   updateDoorayButtonStatus();
-  
+
   showToast('✅ 설정이 저장되었습니다!');
-  
+
+  await initializeLibraryApp({ showFallbackToast: true });
+
   setTimeout(async () => {
-    const result = await testDoorayConnection();
+    await testDoorayConnection();
   }, 500);
 }
