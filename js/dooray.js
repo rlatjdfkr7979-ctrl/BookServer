@@ -343,7 +343,7 @@ ${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
       let errorMessage = `연결 테스트 실패: ${error.message}`;
       
       if (error.message.includes('백엔드 URL')) {
-        errorMessage += `\n\n🔧 Google Apps Script 백엔드 설정 방법:\n1. library-gas-backend.js 파일을 Google Apps Script에 배포\n2. 웹앱으로 배포 후 URL 복사\n3. 아래 백엔드 URL 설정에 입력`;
+        errorMessage += `\n\n🔧 Google Apps Script 백엔드 설정 방법:\n1. gas/library-gas-backend.gs 파일을 Google Apps Script에 배포\n2. 웹앱으로 배포 후 URL 복사\n3. 아래 백엔드 URL 설정에 입력`;
       }
       
       return {
