@@ -101,10 +101,25 @@
 
       <div class="status-card status-warning">
         <strong>⚙️ Google Apps Script 백엔드 URL</strong>
-        <input type="text" id="gasBackendUrl" placeholder="https://script.google.com/macros/s/..." 
+        <input type="text" id="gasBackendUrl" placeholder="https://script.google.com/macros/s/..."
                style="width:100%;margin:8px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;"
                value="">
         <small style="color:#6b7280;">Google Apps Script 웹앱 배포 URL을 입력하세요</small>
+      </div>
+
+      <div class="status-card">
+        <strong>📄 Google Sheets 설정</strong>
+        <div style="margin:8px 0;">
+          <label>대출 이력 시트 이름</label>
+          <input type="text" id="booksSheetName" placeholder="Books"
+                 style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
+        </div>
+        <div style="margin:8px 0;">
+          <label>도서 목록 시트 이름</label>
+          <input type="text" id="librarySheetName" placeholder="Library"
+                 style="width:100%;margin:4px 0;padding:8px;border:1px solid #cbd5e1;border-radius:4px;">
+        </div>
+        <small style="color:#6b7280;">Apps Script가 참조할 구글 시트의 탭 이름을 입력하세요.</small>
       </div>
 
       <div class="status-card">
@@ -144,6 +159,7 @@
 <!-- JavaScript 모듈 -->
 <script src="js/config.js"></script>
 <script src="js/table.js"></script>
+<script src="js/data.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/dooray.js"></script>
 <script src="js/main.js"></script>
