@@ -232,6 +232,22 @@ function renderTableWithPagination(rows, id, withQR = false) {
       btn.textContent = '📷 QR';
       btn.onclick = () => window.generateQR({code, title: rows[i][titleIdx], author, renter, status});
       tdQR.appendChild(btn);
+
+      // 대출 중/연체 도서에만 예약 버튼 표시
+      const isBorrowed = (statusInfo && (statusInfo.className === 'borrowed' || statusInfo.className === 'overdue'))
+        || loanStatus.includes('대출') || loanStatus.includes('대여') || loanStatus.includes('연체');
+      if (isBorrowed && renter) {
+        const reserveBtn = document.createElement('button');
+        reserveBtn.className = 'reserve-btn';
+        reserveBtn.textContent = '📅 예약';
+        reserveBtn.style.marginLeft = '4px';
+        reserveBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          window.showReservationModal({ title: rows[i][titleIdx], borrowerName: renter });
+        };
+        tdQR.appendChild(reserveBtn);
+      }
+
       tr.appendChild(tdQR);
     }
     table.appendChild(tr);

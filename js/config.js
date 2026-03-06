@@ -2,6 +2,9 @@
    📚 도서관리 시스템 - 환경 설정
    ======================================== */
 
+// Google Apps Script - QR 코드 리다이렉트용 (book.py와 동일)
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzegnB9Q_J_rFELwWcpHFYvpBBQHV25JyvEtRLPGr1PRkZsvtqXZUJM9L1F0JQgSqdFjA/exec";
+
 // Google Forms 설정
 const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdGuoHeUW-37RFCBgMH7ZUNL0tt_yHQiIFMrif85mrV428Omg/viewform?usp=header"; // QR 생성용
 const ADD_BOOK_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdOFZRt4o-bw6UNmBB6JtdDQ6PR5f7eW0dpfIs8KwyUysL5ag/viewform"; // 도서 추가용

@@ -1,0 +1,429 @@
+// =============================================================
+// ✅ 폼 응답 진입점
+// =============================================================
+function onFormSubmit(e) {
+  const sheet = e.source.getActiveSheet();
+  const name = sheet.getName();
+
+  // 📗 도서추가 폼 응답 시
+  if (name === '도서추가') {
+    handleBookAddAndGitHub(e);
+    return;
+  }
+
+  // 📘 도서 대여 기록 폼 응답 시
+  if (name === '도서 대여 기록') {
+    updateGitHubCSV(e);
+    return;
+  }
+
+  Logger.log(`⚠️ 다른 시트(${name}) 응답은 무시됨`);
+}
+
+// =============================================================
+// ✅ 도서추가 폼 → 도서목록 시트 + GitHub library.csv
+// =============================================================
+function handleBookAddAndGitHub(e) {
+  const lock = LockService.getScriptLock();
+  
+  try {
+    // 최대 30초 동안 Lock 획득 대기
+    lock.waitLock(30000);
+    Logger.log('🔒 Lock 획득 성공 (도서추가)');
+    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const src = ss.getSheetByName('도서추가');
+    const dst = ss.getSheetByName('도서목록');
+
+    // 🔹 1. 응답 데이터 읽기
+    const last = src.getLastRow();
+    const row = src.getRange(last, 1, 1, src.getLastColumn()).getValues()[0];
+    
+    // 🔹 1-1. 한국어 타임스탬프를 한국 시간으로 변환 (CSV와 동일한 로직)
+    function parseKoreanDateTime(koreanTime) {
+      const timeStr = koreanTime.toString();
+      Logger.log('🔍 원본 시간 (UTC): ' + timeStr);
+      
+      // 한국어 형식 파싱
+      const match = timeStr.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\s+(오전|오후)\s+(\d{1,2}):(\d{2}):(\d{2})/);
+      
+      if (!match) {
+        Logger.log('⚠️ 시간 형식 매칭 실패, 현재 한국 시간 사용');
+        return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+      
+      const [, year, month, day, ampm, hour, minute, second] = match;
+      
+      // 24시간 형식으로 변환
+      let hour24 = parseInt(hour);
+      if (ampm === '오후' && hour24 !== 12) {
+        hour24 += 12;
+      } else if (ampm === '오전' && hour24 === 12) {
+        hour24 = 0;
+      }
+      
+      // UTC에서 실제 한국 시간으로 변환 (+16시간)
+      let kstHour = hour24 + 16;
+      let kstDay = parseInt(day);
+      let kstMonth = parseInt(month);
+      let kstYear = parseInt(year);
+      
+      // 24시간 초과 시 다음 날로
+      if (kstHour >= 24) {
+        kstHour -= 24;
+        kstDay += 1;
+        
+        // 월별 마지막 날 계산
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        // 윤년 체크
+        if (kstYear % 4 === 0 && (kstYear % 100 !== 0 || kstYear % 400 === 0)) {
+          daysInMonth[1] = 29;
+        }
+        
+        // 월 마지막 날 초과 시 다음 달로
+        if (kstDay > daysInMonth[kstMonth - 1]) {
+          kstDay = 1;
+          kstMonth += 1;
+          
+          // 12월 초과 시 다음 해로
+          if (kstMonth > 12) {
+            kstMonth = 1;
+            kstYear += 1;
+          }
+        }
+      }
+      
+      // 한국 시간으로 포맷팅
+      const paddedMonth = kstMonth.toString().padStart(2, '0');
+      const paddedDay = kstDay.toString().padStart(2, '0');
+      const paddedHour = kstHour.toString().padStart(2, '0');
+      const result = `${kstYear}-${paddedMonth}-${paddedDay} ${paddedHour}:${minute}:${second}`;
+      
+      Logger.log('🔍 변환된 한국 시간 (+16): ' + result);
+      return result;
+    }
+    
+    const tsKST = parseKoreanDateTime(row[0]);
+    const input = row.slice(1); // 타임스탬프 제외
+
+    // 🔹 2. 시트 입력값 매핑 (변환된 시간 포함)
+    const A = input[0] || '';
+    const B = input[1] || '';
+    const C = input[2] || '';
+    const D = input[3] || '';
+    const G = input[4] || '';
+
+    // 변환된 한국 시간을 포함한 레코드 생성
+    const record = [A, B, C, D, '', '', G]; // GitHub용
+    const sheetRecord = [String(A), B, C, D, '', '', G]; // 시트용
+
+    // 🔹 3. 도서목록에 추가 (변환된 시간 포함)
+    dst.appendRow(sheetRecord);
+
+    // 🔹 4. E,F 수식 복사
+    const newRow = dst.getLastRow();
+    const prevRow = newRow - 1;
+    const eR1 = dst.getRange(prevRow, 5).getFormulaR1C1();
+    const fR1 = dst.getRange(prevRow, 6).getFormulaR1C1();
+    if (eR1) dst.getRange(newRow, 5).setFormulaR1C1(eR1);
+    if (fR1) dst.getRange(newRow, 6).setFormulaR1C1(fR1);
+
+    Logger.log(`📗 도서목록 행 ${newRow} 추가 완료 (${tsKST})`);
+
+    // 🔹 5. GitHub library.csv 업데이트
+    updateLibraryCSVOnGitHub(record);
+    
+  } catch (err) {
+    Logger.log('🚨 도서추가 처리 실패: ' + err);
+  } finally {
+    lock.releaseLock();
+    Logger.log('🔓 Lock 해제 (도서추가)');
+  }
+}
+
+// =============================================================
+// ✅ library.csv 업데이트
+// =============================================================
+function updateLibraryCSVOnGitHub(record) {
+  const token = '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';
+  const repo = 'rlatjdfkr7979-ctrl/BookServer';
+  const path = 'library.csv';
+  const branch = 'main';
+  const getUrl = `https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`;
+
+  try {
+    // ① 기존 CSV 불러오기
+    const getRes = UrlFetchApp.fetch(getUrl, {
+      headers: { Authorization: 'token ' + token }
+    });
+    const getJson = JSON.parse(getRes.getContentText());
+    const sha = getJson.sha;
+
+    // ② 기존 CSV 디코딩 + 줄바꿈 통일
+    let oldCsv = Utilities.newBlob(
+      Utilities.base64Decode(getJson.content)
+    ).getDataAsString('UTF-8');
+    oldCsv = oldCsv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // ③ record → 새 행 구성
+    const [code, title, author, publisher, , , genre] = record;
+    const newLineArr = [
+      code, title, author, publisher,
+      '', '', genre, '', ''
+    ];
+    const newLine = newLineArr.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+
+    // ④ 개행 처리 후 행 추가
+    const cleanOldCsv = oldCsv.replace(/\n+$/, '');
+    const newCsv = cleanOldCsv + '\n' + newLine + '\n';
+
+    // ⑤ base64 인코딩
+    const encoded = Utilities.base64Encode(
+      Utilities.newBlob(newCsv).getBytes()
+    );
+
+    const payload = {
+      message: 'Append new book record to library.csv',
+      content: encoded,
+      sha: sha,
+      branch: branch
+    };
+
+    const putRes = UrlFetchApp.fetch(getUrl, {
+      method: 'put',
+      headers: {
+        Authorization: 'token ' + token,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload)
+    });
+
+    Logger.log('✅ library.csv 업데이트 완료: ' + putRes.getResponseCode());
+  } catch (err) {
+    Logger.log('🚨 library.csv 업데이트 실패: ' + err);
+  }
+}
+
+// =============================================================
+// ✅ 도서 대여 기록 → books.csv 업데이트
+// =============================================================
+function updateGitHubCSV(e) {
+  const lock = LockService.getScriptLock();
+  
+  try {
+    // 최대 30초 동안 Lock 획득 대기
+    lock.waitLock(30000);
+    Logger.log('🔒 Lock 획득 성공 (대여기록)');
+    
+    const token = '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';
+    const repo = 'rlatjdfkr7979-ctrl/BookServer';
+    const path = 'books.csv';
+    const branch = 'main';
+    const getUrl = `https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`;
+
+    // 🔹 1. 폼 응답값 읽기
+    const row = e.values;
+    const [timestamp, code, borrower, status, title, author] = row;
+
+    // 🔹 1-1. UTC 한국어 타임스탬프를 한국 시간으로 변환
+    function parseKoreanDateTime(koreanTime) {
+      const timeStr = koreanTime.toString();
+      Logger.log('🔍 원본 시간 (UTC): ' + timeStr);
+      
+      const match = timeStr.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\s+(오전|오후)\s+(\d{1,2}):(\d{2}):(\d{2})/);
+      
+      if (!match) {
+        Logger.log('⚠️ 시간 형식 매칭 실패, 현재 한국 시간 사용');
+        return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+      
+      const [, year, month, day, ampm, hour, minute, second] = match;
+      
+      let hour24 = parseInt(hour);
+      if (ampm === '오후' && hour24 !== 12) {
+        hour24 += 12;
+      } else if (ampm === '오전' && hour24 === 12) {
+        hour24 = 0;
+      }
+      
+      let kstHour = hour24 + 16;
+      let kstDay = parseInt(day);
+      let kstMonth = parseInt(month);
+      let kstYear = parseInt(year);
+      
+      if (kstHour >= 24) {
+        kstHour -= 24;
+        kstDay += 1;
+        
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (kstYear % 4 === 0 && (kstYear % 100 !== 0 || kstYear % 400 === 0)) {
+          daysInMonth[1] = 29;
+        }
+        
+        if (kstDay > daysInMonth[kstMonth - 1]) {
+          kstDay = 1;
+          kstMonth += 1;
+          
+          if (kstMonth > 12) {
+            kstMonth = 1;
+            kstYear += 1;
+          }
+        }
+      }
+      
+      const paddedMonth = kstMonth.toString().padStart(2, '0');
+      const paddedDay = kstDay.toString().padStart(2, '0');
+      const paddedHour = kstHour.toString().padStart(2, '0');
+      const result = `${kstYear}-${paddedMonth}-${paddedDay} ${paddedHour}:${minute}:${second}`;
+      
+      Logger.log('🔍 변환된 한국 시간 (UTC+9): ' + result);
+      return result;
+    }
+    
+    const tsKST = parseKoreanDateTime(timestamp);
+
+    // 🔹 2. CSV 구조에 맞춰 재배열
+    const newLineArr = [
+      tsKST || '',
+      code || '',
+      title || '',
+      author || '',
+      borrower || '',
+      status || ''
+    ];
+    const newCsvLine = newLineArr.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+
+    // 🔹 3. 기존 CSV 가져오기
+    const getRes = UrlFetchApp.fetch(getUrl, {
+      headers: { Authorization: 'token ' + token }
+    });
+    const getJson = JSON.parse(getRes.getContentText());
+    const sha = getJson.sha;
+    let oldCsv = Utilities.newBlob(Utilities.base64Decode(getJson.content)).getDataAsString('UTF-8');
+
+    // 🔹 4. 개행 처리 후 행 추가
+    const newline = oldCsv.includes('\r\n') ? '\r\n' : '\n';
+    const cleanOldCsv = oldCsv.replace(/(\r\n|\n|\r)+$/, '');
+    const newCsv = cleanOldCsv + newline + newCsvLine;
+
+    // 🔹 5. 인코딩 및 업로드
+    const encoded = Utilities.base64Encode(
+      Utilities.newBlob(newCsv, 'text/csv', 'books.csv').getBytes()
+    );
+
+    const payload = {
+      message: 'Append new loan record to books.csv',
+      content: encoded,
+      sha: sha,
+      branch: branch
+    };
+
+    const putRes = UrlFetchApp.fetch(getUrl, {
+      method: 'put',
+      headers: {
+        Authorization: 'token ' + token,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload)
+    });
+
+    Logger.log('✅ books.csv 업데이트 완료: ' + putRes.getResponseCode());
+
+  } catch (err) {
+    Logger.log('🚨 books.csv 업데이트 실패: ' + err);
+  } finally {
+    lock.releaseLock();
+    Logger.log('🔓 Lock 해제 (대여기록)');
+  }
+}
+
+// =============================================================
+// ✅ 웹 앱 POST 엔드포인트 (예약 DM 발송용)
+// =============================================================
+function doPost(e) {
+  try {
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+
+    if (action === 'sendReservationDM') {
+      const result = sendReservationDM(params.borrowerName, params.bookTitle, params.reserverName);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: '알 수 없는 action: ' + action }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    Logger.log('🚨 doPost 오류: ' + err);
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// =============================================================
+// ✅ Dooray DM 발송 (대출자에게 반납 요청)
+//    - 260303_챗봇_ver2.0.py의 Dooray API 로직 참고
+//    - GAS 스크립트 속성에 DOORAY_TOKEN 저장 필요
+// =============================================================
+function sendReservationDM(borrowerName, bookTitle, reserverName) {
+  const DOORAY_TOKEN = PropertiesService.getScriptProperties().getProperty('DOORAY_TOKEN');
+  const BASE_URL = 'https://umc.gov-dooray.com';
+
+  if (!DOORAY_TOKEN) {
+    Logger.log('🚨 DOORAY_TOKEN이 스크립트 속성에 설정되지 않음');
+    return { success: false, error: 'DOORAY_TOKEN이 설정되지 않았습니다.' };
+  }
+
+  try {
+    // 1. 대출자 이름으로 Dooray 멤버 ID 조회
+    const memberUrl = BASE_URL + '/common/v1/members?name=' + encodeURIComponent(borrowerName);
+    const memberRes = UrlFetchApp.fetch(memberUrl, {
+      headers: { 'Authorization': DOORAY_TOKEN },
+      muteHttpExceptions: true
+    });
+    const memberData = JSON.parse(memberRes.getContentText());
+    Logger.log('🔍 멤버 조회 결과: ' + JSON.stringify(memberData));
+
+    const members = memberData.result;
+    if (!members || members.length === 0) {
+      Logger.log('⚠️ 대출자 미발견: ' + borrowerName);
+      return { success: false, error: '"' + borrowerName + '" 멤버를 찾을 수 없습니다.' };
+    }
+
+    const memberId = members[0].id;
+    Logger.log('✅ 대출자 ID 확인: ' + memberId);
+
+    // 2. DM 발송
+    const message = '[도서 예약 알림] "' + bookTitle + '" 도서를 ' + reserverName + '님이 예약하셨습니다. 반납을 서둘러 주시면 감사하겠습니다. 🙏';
+    const dmUrl = BASE_URL + '/messenger/v1/channels/direct-send';
+    const dmRes = UrlFetchApp.fetch(dmUrl, {
+      method: 'post',
+      headers: {
+        'Authorization': DOORAY_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify({
+        organizationMemberId: memberId,
+        text: message
+      }),
+      muteHttpExceptions: true
+    });
+
+    const dmCode = dmRes.getResponseCode();
+    Logger.log('📨 DM 발송 응답 코드: ' + dmCode);
+
+    if (dmCode >= 200 && dmCode < 300) {
+      return { success: true };
+    } else {
+      return { success: false, error: 'DM 발송 실패 (HTTP ' + dmCode + ')' };
+    }
+
+  } catch (err) {
+    Logger.log('🚨 sendReservationDM 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}

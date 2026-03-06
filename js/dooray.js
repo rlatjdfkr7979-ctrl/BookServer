@@ -315,6 +315,19 @@ ${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
     return await this.sendNotification(message);
   }
 
+  // 📅 도서 예약 DM 발송 (대출자에게 반납 요청)
+  async sendReservationDM(borrowerName, bookTitle, reserverName) {
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    if (!GAS_BACKEND_URL) {
+      throw new Error('GAS 백엔드 URL이 설정되지 않았습니다. Dooray 연동 설정에서 URL을 입력해주세요.');
+    }
+    return this.makePostRequest(GAS_BACKEND_URL, 'sendReservationDM', {
+      borrowerName,
+      bookTitle,
+      reserverName
+    });
+  }
+
   // 🧪 연결 테스트
   async testConnection() {
     if (!this.isEnabled) {

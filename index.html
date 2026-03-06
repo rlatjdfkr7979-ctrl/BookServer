@@ -135,6 +135,26 @@
   </div>
 </div>
 
+<!-- 도서 예약 모달 -->
+<div id="reservationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; padding:2rem; border-radius:8px; min-width:320px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+    <h3 style="margin:0 0 1rem 0;">📅 도서 예약</h3>
+    <p style="margin:0 0 0.5rem 0; color:#374151;"><strong id="reservationBookTitle"></strong></p>
+    <p style="margin:0 0 1rem 0;">현재 대출자: <span id="reservationBorrower" style="color:#dc2626; font-weight:600;"></span></p>
+    <hr style="border:none; border-top:1px solid #e5e7eb; margin-bottom:1rem;"/>
+    <label style="display:block; margin-bottom:0.5rem; font-weight:500;">예약자 이름</label>
+    <input type="text" id="reserverNameInput" placeholder="이름을 입력하세요"
+           style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:4px; box-sizing:border-box; font-size:1rem;" />
+    <p style="font-size:0.85rem; color:#6b7280; margin:0.5rem 0 1.5rem 0;">
+      대출자에게 반납 요청 메시지가 Dooray DM으로 발송됩니다.
+    </p>
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+      <button id="cancelReserveBtn" style="padding:0.5rem 1.2rem; border:1px solid #d1d5db; background:#fff; border-radius:4px; cursor:pointer;">취소</button>
+      <button id="confirmReserveBtn" style="padding:0.5rem 1.2rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:500;">예약 및 메시지 발송</button>
+    </div>
+  </div>
+</div>
+
 <footer>© 울산도시공사 도서관리 시스템 | 시스템 문의(김성락 대리 417)</footer>
 
 <!-- 라이브러리 -->
@@ -146,6 +166,7 @@
 <script src="js/table.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/dooray.js"></script>
+<script src="js/reservation.js"></script>
 <script src="js/main.js"></script>
 
 </body>
