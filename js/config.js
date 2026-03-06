@@ -19,11 +19,17 @@ const ENTRY_IDS = {
 // 페이지네이션 설정
 const ITEMS_PER_PAGE = 20; // 페이지당 항목 수
 
+// GAS 백엔드 기본 URL (설정 저장 없이도 자동 사용)
+const DEFAULT_GAS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzzMBoVKIc3X0cMUok7IzvFu1ZcSfq3-SwYFpLT1PL-wijrpLD6jb5lK8gB5DEFxLgR_g/exec";
+if (!localStorage.getItem('gas_backend_url')) {
+  localStorage.setItem('gas_backend_url', DEFAULT_GAS_BACKEND_URL);
+}
+
 // Dooray 설정
 window.DOORAY_CONFIG = {
   wikiId: localStorage.getItem('dooray_wiki_id') || '',
   pageId: localStorage.getItem('dooray_page_id') || '',
-  backendUrl: localStorage.getItem('gas_backend_url') || '',
+  backendUrl: localStorage.getItem('gas_backend_url') || DEFAULT_GAS_BACKEND_URL,
   settings: {
     autoSync: localStorage.getItem('dooray_auto_sync') === 'true',
     syncInterval: parseInt(localStorage.getItem('dooray_sync_interval')) || 3600000, // 기본 1시간
