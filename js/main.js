@@ -92,8 +92,11 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
     window.doorayIntegration.getReservations('').then(result => {
       if (result && result.success) {
         window.reservationData = result.data || [];
-        // 예약 수 뱃지 반영을 위해 테이블 재렌더
         if (window.reservationData.length > 0) applyAllFilters();
+        // 예약현황 버튼 뱃지 갱신
+        const waitCount = window.reservationData.filter(r => r.status === '대기').length;
+        const el = document.getElementById('reservationWaitCount');
+        if (el) el.textContent = waitCount > 0 ? `대기 ${waitCount}건` : '';
       }
     }).catch(() => {});
   }
