@@ -315,15 +315,15 @@ ${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
     return await this.sendNotification(message);
   }
 
-  // 📅 도서 예약 DM 발송 (JSONP GET 방식 - CORS 우회)
-  sendReservationDM(borrowerName, bookTitle, reserverName) {
+  // 📬 예약 DM 발송 (대출자에게 반납 요청)
+  async sendReservationDM(borrowerName, bookTitle, reserverName) {
     const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
     if (!GAS_BACKEND_URL) {
-      return Promise.reject(new Error('GAS 백엔드 URL이 설정되지 않았습니다. Dooray 연동 설정에서 URL을 입력해주세요.'));
+      return { success: false, error: 'Google Apps Script 백엔드 URL이 설정되지 않았습니다.' };
     }
 
-    return new Promise((resolve, reject) => {
-      const callbackName = 'jsonp_reserve_' + Date.now();
+    return new Promise((resolve) => {
+      const callbackName = 'jsonp_callback_' + Date.now();
 
       window[callbackName] = function(data) {
         delete window[callbackName];
@@ -339,17 +339,19 @@ ${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
         reserverName,
         callback: callbackName
       });
+
       script.src = `${GAS_BACKEND_URL}?${params}`;
       script.onerror = () => {
         delete window[callbackName];
         if (document.head.contains(script)) document.head.removeChild(script);
-        reject(new Error('GAS 연결 실패'));
+        resolve({ success: false, error: 'GAS 연결 실패: 스크립트 로드 오류' });
       };
+
       setTimeout(() => {
         if (window[callbackName]) {
           delete window[callbackName];
           if (document.head.contains(script)) document.head.removeChild(script);
-          reject(new Error('요청 타임아웃 (30초)'));
+          resolve({ success: false, error: 'GAS 요청 타임아웃 (30초)' });
         }
       }, 30000);
 
