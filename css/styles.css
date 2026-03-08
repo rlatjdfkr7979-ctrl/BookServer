@@ -236,6 +236,7 @@ button.reserve-btn:active {
 /* 예약 현황 패널 필터 버튼 */
 .res-filter-btn {
   background: #f3f4f6;
+  color: #374151;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   padding: 5px 14px;
