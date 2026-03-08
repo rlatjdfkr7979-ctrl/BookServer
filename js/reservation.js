@@ -2,11 +2,11 @@
    📅 도서 예약 모달 로직
    ======================================== */
 
-window.showReservationModal = function({ title, borrowerName }) {
+window.showReservationModal = function({ title, bookCode, borrowerName }) {
   document.getElementById('reservationBookTitle').textContent = '도서명: ' + title;
   document.getElementById('reservationBorrower').textContent = borrowerName;
   document.getElementById('reserverNameInput').value = '';
-  document.getElementById('reservationModal')._current = { title, borrowerName };
+  document.getElementById('reservationModal')._current = { title, bookCode, borrowerName };
   document.getElementById('reservationModal').style.display = 'flex';
   setTimeout(() => document.getElementById('reserverNameInput').focus(), 100);
 };
@@ -35,18 +35,28 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const { title, borrowerName } = document.getElementById('reservationModal')._current;
+    const { title, bookCode, borrowerName } = document.getElementById('reservationModal')._current;
     const btn = document.getElementById('confirmReserveBtn');
     btn.disabled = true;
-    btn.textContent = '발송 중...';
+    btn.textContent = '처리 중...';
 
     try {
-      const result = await window.doorayIntegration.sendReservationDM(borrowerName, title, reserverName);
-      if (result && result.success) {
-        alert(`✅ ${borrowerName}님께 반납 요청 메시지를 발송했습니다.`);
+      const dmResult = await window.doorayIntegration.sendReservationDM(borrowerName, title, reserverName);
+      if (dmResult && dmResult.success) {
+        // DM 성공 후 예약 데이터 저장
+        window.doorayIntegration.saveReservation(bookCode || '', title, borrowerName, reserverName)
+          .then(() => {
+            // 예약 수 캐시 업데이트
+            if (bookCode) {
+              window.reservationData = window.reservationData || [];
+              window.reservationData.push({ bookCode, bookTitle: title, borrowerName, reserverName, status: '대기' });
+              if (typeof window.updateReservationBadges === 'function') window.updateReservationBadges();
+            }
+          });
+        alert(`✅ ${borrowerName}님께 반납 요청 메시지를 발송하고 예약을 등록했습니다.`);
         document.getElementById('reservationModal').style.display = 'none';
       } else {
-        alert('❌ 메시지 발송 실패: ' + (result && result.error ? result.error : '알 수 없는 오류'));
+        alert('❌ 메시지 발송 실패: ' + (dmResult && dmResult.error ? dmResult.error : '알 수 없는 오류'));
       }
     } catch (err) {
       alert('❌ 오류: ' + err.message);

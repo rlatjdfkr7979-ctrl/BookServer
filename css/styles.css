@@ -222,6 +222,63 @@ button.reserve-btn:active {
   transform: translateY(0);
 }
 
+/* 예약 수 뱃지 */
+.reserve-badge {
+  background: #dc2626;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* 예약 현황 패널 필터 버튼 */
+.res-filter-btn {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+.res-filter-btn.active,
+.res-filter-btn:hover {
+  background: #0891b2;
+  color: #fff;
+  border-color: #0891b2;
+}
+
+/* 예약 상태 뱃지 */
+.res-status-badge {
+  display: inline-block;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.res-status-waiting { background: #fef3c7; color: #92400e; }
+.res-status-done    { background: #d1fae5; color: #065f46; }
+.res-status-cancelled { background: #f3f4f6; color: #6b7280; }
+
+/* 예약 취소 버튼 */
+.res-cancel-btn {
+  background: none;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: 6px;
+  transition: all 0.15s;
+}
+.res-cancel-btn:hover {
+  background: #dc2626;
+  color: #fff;
+}
+
 /* ====== 입력 필드 ====== */
 input {
   display: block;

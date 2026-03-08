@@ -239,11 +239,16 @@ function renderTableWithPagination(rows, id, withQR = false) {
       if (isBorrowed && renter) {
         const reserveBtn = document.createElement('button');
         reserveBtn.className = 'reserve-btn';
-        reserveBtn.textContent = '📅 예약';
+        const bookCode = norm(rows[i][codeIdx]);
+        // 예약 대기 수 뱃지
+        const waitCount = (window.reservationData || []).filter(
+          r => norm(r.bookCode) === bookCode && r.status === '대기'
+        ).length;
+        reserveBtn.innerHTML = '📅 예약' + (waitCount > 0 ? ` <span class="reserve-badge">${waitCount}</span>` : '');
         reserveBtn.style.marginLeft = '4px';
         reserveBtn.onclick = (ev) => {
           ev.stopPropagation();
-          window.showReservationModal({ title: rows[i][titleIdx], borrowerName: renter });
+          window.showReservationModal({ title: rows[i][titleIdx], bookCode, borrowerName: renter });
         };
         tdQR.appendChild(reserveBtn);
       }
@@ -256,6 +261,16 @@ function renderTableWithPagination(rows, id, withQR = false) {
 
 window.renderTable = renderTable;
 window.renderTableWithPagination = renderTableWithPagination;
+
+// 예약 뱃지만 재렌더링 (예약 후 즉시 반영용)
+window.updateReservationBadges = function() {
+  document.querySelectorAll('.reserve-btn').forEach(btn => {
+    const modal = document.getElementById('reservationModal');
+    // 버튼의 onclick에서 bookCode를 추출하기 어려우므로 전체 테이블 재렌더
+  });
+  // 전체 테이블 재렌더 (가장 확실한 방법)
+  if (typeof window.applyAllFilters === 'function') window.applyAllFilters();
+};
 
 /* ====== 테이블 정렬 ====== */
 function sortTable(originalRows, tableId, colIdx, withQR = false) {

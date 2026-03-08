@@ -86,6 +86,17 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   renderTable(library, 'libraryTable', true);
   addSearch('searchLoans', 'loanTable');
   addSearch('searchLibrary', 'libraryTable');
+
+  // 예약 데이터 로드 (GAS URL이 설정된 경우)
+  if (localStorage.getItem('gas_backend_url') && window.doorayIntegration) {
+    window.doorayIntegration.getReservations('').then(result => {
+      if (result && result.success) {
+        window.reservationData = result.data || [];
+        // 예약 수 뱃지 반영을 위해 테이블 재렌더
+        if (window.reservationData.length > 0) applyAllFilters();
+      }
+    }).catch(() => {});
+  }
 });
 
 /* ====== 필터 함수 ====== */

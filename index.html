@@ -30,6 +30,7 @@
   
   <div class="nav-group action-nav">
     <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+    <button id="btnReservations" style="background:#0891b2;" onclick="openReservationsPanel()">📋 예약 현황 <span id="reservationWaitCount" style="font-size:11px;background:#fff;color:#0891b2;border-radius:10px;padding:1px 6px;margin-left:4px;"></span></button>
     <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
   </div>
 </nav>
@@ -135,6 +136,41 @@
   </div>
 </div>
 
+<!-- 예약 현황 패널 오버레이 -->
+<div id="reservationsPanelOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:900;" onclick="closeReservationsPanel()"></div>
+
+<!-- 예약 현황 패널 -->
+<div id="reservationsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:860px;max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.25);z-index:950;flex-direction:column;">
+  <div style="padding:1.2rem 1.5rem 0.8rem;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;font-size:1.1rem;">📋 예약 현황</h3>
+    <button onclick="closeReservationsPanel()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280;line-height:1;">×</button>
+  </div>
+  <div style="padding:0.8rem 1.5rem;display:flex;gap:6px;flex-wrap:wrap;">
+    <button class="res-filter-btn active" data-status="전체" onclick="filterReservations('전체')">전체</button>
+    <button class="res-filter-btn" data-status="대기" onclick="filterReservations('대기')">⏳ 대기</button>
+    <button class="res-filter-btn" data-status="완료" onclick="filterReservations('완료')">✅ 완료</button>
+    <button class="res-filter-btn" data-status="취소" onclick="filterReservations('취소')">❌ 취소</button>
+    <button onclick="loadAllReservations ? loadAllReservations() : openReservationsPanel()" style="margin-left:auto;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;">🔄 새로고침</button>
+  </div>
+  <div style="overflow-y:auto;flex:1;padding:0 1.5rem 1.2rem;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <thead>
+        <tr style="background:#f8fafc;position:sticky;top:0;">
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">도서명</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">코드</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">예약자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">대출자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">예약일시</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">상태</th>
+        </tr>
+      </thead>
+      <tbody id="reservationsTbody">
+        <tr><td colspan="6" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- 도서 예약 모달 -->
 <div id="reservationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fff; padding:2rem; border-radius:8px; min-width:320px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
@@ -167,6 +203,7 @@
 <script src="js/ui.js"></script>
 <script src="js/dooray.js"></script>
 <script src="js/reservation.js"></script>
+<script src="js/reservations-panel.js"></script>
 <script src="js/main.js"></script>
 
 </body>
