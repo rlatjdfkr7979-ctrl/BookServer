@@ -156,21 +156,18 @@ async function showBookPreview(code, title, author = '') {
   previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
   
   try {
-    const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
-    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${searchQuery}&maxResults=5&langRestrict=ko`;
-    
-    const response = await fetch(apiUrl);
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      const bestMatch = findBestBookMatch(data.items, title);
+    const items = await fetchGoogleBooks(`${title} ${author}`.trim())
+      || await fetchGoogleBooks(title);
+
+    if (items && items.length > 0) {
+      const bestMatch = findBestBookMatch(items, title);
       renderBookInfo(bestMatch, previewContent);
     } else {
       renderBasicBookInfo(title, author, code, previewContent);
     }
-    
+
     renderBookHistory(code, title, historyContent);
-    
+
   } catch (error) {
     console.error('도서 정보 로드 실패:', error);
     renderBasicBookInfo(title, author, code, previewContent);
@@ -182,6 +179,14 @@ async function showBookPreview(code, title, author = '') {
   };
   
   modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
+}
+
+async function fetchGoogleBooks(query) {
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  return data.items && data.items.length > 0 ? data.items : null;
 }
 
 function findBestBookMatch(items, targetTitle) {
