@@ -145,6 +145,27 @@ function addSearch(inputId, tableId) {
   });
 }
 
+/* ====== Google Books 캐시 (24시간) ====== */
+const BOOK_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function getBookCache(title) {
+  try {
+    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > BOOK_CACHE_TTL) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function setBookCache(title, data) {
+  try {
+    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {} // localStorage 가득 차면 무시
+}
+
 /* ====== 도서 미리보기 모달 ====== */
 async function showBookPreview(code, title, author = '') {
   const modal = document.getElementById('bookPreviewModal');
@@ -158,13 +179,24 @@ async function showBookPreview(code, title, author = '') {
   modal.style.display = 'flex';
   switchTab('preview');
   previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
-  
+
+  // 캐시 확인 (API 호출 없이 즉시 표시)
+  const cached = getBookCache(title);
+  if (cached) {
+    renderBookInfo(cached, previewContent);
+    renderBookHistory(code, title, historyContent);
+    modal.onclick = (e) => { if (e.target === modal) closeBookPreview(); };
+    modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
+    return;
+  }
+
   try {
     const items = await fetchGoogleBooks(`${title} ${author}`.trim())
       || await fetchGoogleBooks(title);
 
     if (items && items.length > 0) {
       const bestMatch = findBestBookMatch(items, title);
+      setBookCache(title, bestMatch); // 성공 시 캐시 저장
       renderBookInfo(bestMatch, previewContent);
     } else {
       renderBasicBookInfo(title, author, code, previewContent);
@@ -177,15 +209,15 @@ async function showBookPreview(code, title, author = '') {
     const isTimeout = error.name === 'AbortError';
     const notice = isTimeout
       ? '⏱ Google Books API 응답 시간 초과 (네트워크 또는 방화벽 문제일 수 있습니다)'
-      : '⚠ Google Books API를 불러올 수 없습니다';
+      : `⚠ Google Books API 오류 (${error.message}) — 잠시 후 다시 시도하거나 담당자에게 문의하세요`;
     renderBasicBookInfo(title, author, code, previewContent, notice);
     renderBookHistory(code, title, historyContent);
   }
-  
+
   modal.onclick = (e) => {
     if (e.target === modal) closeBookPreview();
   };
-  
+
   modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
 }
 
