@@ -823,7 +823,26 @@ td.wrap-cell {
   cursor: not-allowed;
 }
 
-/* ====== 도서 신청 모달 ====== */
+/* ====== 도서신청 패널 필터 버튼 ====== */
+.req-status-filter {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.req-status-filter.active,
+.req-status-filter:hover {
+  background: #d97706;
+  color: #fff;
+  border-color: #d97706;
+}
+
+/* ====== 도서 신청 모달 (미사용 - 패널 방식으로 대체) ====== */
 #bookRequestModal {
   position: fixed;
   inset: 0;

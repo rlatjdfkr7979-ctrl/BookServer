@@ -174,7 +174,11 @@ async function showBookPreview(code, title, author = '') {
 
   } catch (error) {
     console.error('도서 정보 로드 실패:', error);
-    renderBasicBookInfo(title, author, code, previewContent);
+    const isTimeout = error.name === 'AbortError';
+    const notice = isTimeout
+      ? '⏱ Google Books API 응답 시간 초과 (네트워크 또는 방화벽 문제일 수 있습니다)'
+      : '⚠ Google Books API를 불러올 수 없습니다';
+    renderBasicBookInfo(title, author, code, previewContent, notice);
     renderBookHistory(code, title, historyContent);
   }
   
@@ -186,11 +190,19 @@ async function showBookPreview(code, title, author = '') {
 }
 
 async function fetchGoogleBooks(query) {
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
-  return data.items && data.items.length > 0 ? data.items : null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko`;
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return data.items && data.items.length > 0 ? data.items : null;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
 }
 
 function findBestBookMatch(items, targetTitle) {
@@ -267,7 +279,7 @@ function renderBookInfo(bookData, container) {
   `;
 }
 
-function renderBasicBookInfo(title, author, code, container) {
+function renderBasicBookInfo(title, author, code, container, notice = '') {
   container.innerHTML = `
     <div class="book-header">
       <div class="book-cover">
@@ -279,8 +291,9 @@ function renderBasicBookInfo(title, author, code, container) {
         <p style="color:#6b7280;font-size:14px;">📚 코드: ${code}</p>
       </div>
     </div>
-    <div class="book-description" style="text-align:center;color:#6b7280;padding:40px;">
-      상세한 도서 정보를 찾을 수 없습니다.<br>
+    ${notice ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:13px;color:#92400e;">${notice}</div>` : ''}
+    <div class="book-description" style="text-align:center;color:#6b7280;padding:30px;">
+      Google Books에서 도서 정보를 찾을 수 없습니다.<br>
       도서관 내부 정보만 표시됩니다.
     </div>
   `;

@@ -2,18 +2,17 @@
    📚 도서관리 시스템 - 신규 도서 신청 모듈
    ======================================== */
 
+// 패널 열기 (btnBookRequest 클릭 시 호출)
 function showBookRequestModal() {
-  const modal = document.getElementById('bookRequestModal');
-  document.getElementById('reqTitle').value = '';
-  document.getElementById('reqAuthor').value = '';
-  document.getElementById('reqRequester').value = '';
-  document.getElementById('reqReason').value = '';
-  modal.style.display = 'flex';
-  document.getElementById('reqTitle').focus();
+  clearBookRequestForm();
+  openBookRequestPanel();
 }
 
-function closeBookRequestModal() {
-  document.getElementById('bookRequestModal').style.display = 'none';
+function clearBookRequestForm() {
+  ['reqTitle', 'reqAuthor', 'reqRequester', 'reqReason'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 }
 
 async function submitBookRequest() {
@@ -25,17 +24,15 @@ async function submitBookRequest() {
   if (!title) { showToast('⚠️ 도서 제목을 입력해주세요.'); return; }
   if (!requester) { showToast('⚠️ 신청자 이름을 입력해주세요.'); return; }
 
+  const gasUrl = localStorage.getItem('gas_backend_url');
+  if (!gasUrl) {
+    showToast('⚠️ GAS URL이 설정되지 않았습니다. Dooray 연동 설정을 확인해주세요.');
+    return;
+  }
+
   const btn = document.getElementById('confirmBookRequest');
   btn.disabled = true;
   btn.textContent = '신청 중...';
-
-  const gasUrl = localStorage.getItem('gas_backend_url');
-  if (!gasUrl) {
-    showToast('⚠️ GAS 백엔드 URL이 설정되지 않았습니다. Dooray 연동 설정을 확인해주세요.');
-    btn.disabled = false;
-    btn.textContent = '신청하기';
-    return;
-  }
 
   try {
     const result = await gasJsonp(gasUrl, {
@@ -48,7 +45,9 @@ async function submitBookRequest() {
 
     if (result && result.success) {
       showToast(`✅ "${title}" 도서 신청이 완료되었습니다!`);
-      closeBookRequestModal();
+      clearBookRequestForm();
+      // 신청 현황 탭으로 전환해서 결과 확인
+      switchReqTab('list');
     } else {
       showToast('❌ 신청 실패: ' + (result && result.error ? result.error : '알 수 없는 오류'));
     }
@@ -60,7 +59,7 @@ async function submitBookRequest() {
   }
 }
 
-// GAS JSONP 공통 헬퍼
+// GAS JSONP 공통 헬퍼 (전역 사용)
 function gasJsonp(url, params, timeout = 15000) {
   return new Promise((resolve, reject) => {
     const cbName = 'gasCallback_' + Date.now();
@@ -92,15 +91,9 @@ function gasJsonp(url, params, timeout = 15000) {
   });
 }
 
-// 모달 이벤트 바인딩
+// 이벤트 바인딩
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('confirmBookRequest').addEventListener('click', submitBookRequest);
-  document.getElementById('closeBookRequestModal').addEventListener('click', closeBookRequestModal);
-
-  // 배경 클릭으로 닫기
-  document.getElementById('bookRequestModal').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('bookRequestModal')) closeBookRequestModal();
-  });
 
   // Enter 키 지원
   ['reqTitle', 'reqAuthor', 'reqRequester'].forEach(id => {
