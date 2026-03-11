@@ -111,7 +111,7 @@ function renderTable(rows, id, withQR = false) {
 function renderTableWithPagination(rows, id, withQR = false) {
   const header = rows[0];
   const table = document.getElementById(id);
-  const finalHeader = withQR ? [...header, 'QR 생성'] : header;
+  const finalHeader = withQR ? [...header, '대여 QR 보기'] : header;
   
   // 줄바꿈이 필요한 열 인덱스(제목/도서명, 기타/비고)
   const wrapIdxSet = new Set([
@@ -397,3 +397,4 @@ function calculateLoanStatus(dateStr, status) {
 
 window.isOverdue = isOverdue;
 window.calculateLoanStatus = calculateLoanStatus;
+
