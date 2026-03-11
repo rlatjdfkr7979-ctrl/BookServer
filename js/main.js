@@ -263,6 +263,10 @@ document.getElementById('btnAddBook').onclick = () => {
   window.open(ADD_BOOK_FORM_URL, '_blank');
 };
 
+document.getElementById('btnBookRequest').onclick = () => {
+  showBookRequestModal();
+};
+
 document.getElementById('btnDooraySync').onclick = () => {
   showDoorayModal();
 };

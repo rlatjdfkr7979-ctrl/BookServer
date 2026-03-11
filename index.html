@@ -30,6 +30,7 @@
   
   <div class="nav-group action-nav">
     <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+    <button id="btnBookRequest" style="background:#d97706;">📝 도서 신청</button>
     <button id="btnReservations" style="background:#0891b2;" onclick="openReservationsPanel()">📋 예약 현황 <span id="reservationWaitCount" style="font-size:11px;background:#fff;color:#0891b2;border-radius:10px;padding:1px 6px;margin-left:4px;"></span></button>
     <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
   </div>
@@ -67,17 +68,20 @@
       <div class="tab-buttons">
         <button class="tab-button active" onclick="switchTab('preview')">📚 도서 정보</button>
         <button class="tab-button" onclick="switchTab('history')">📋 대출 이력</button>
+        <button class="tab-button" onclick="switchTab('reviews')">⭐ 리뷰</button>
       </div>
-      
+
       <div id="previewTab" class="tab-content active">
         <div id="bookPreviewContent">
           <div class="loading">📚 도서 정보를 불러오는 중...</div>
         </div>
       </div>
-      
+
       <div id="historyTab" class="tab-content">
         <div id="bookHistoryContent"></div>
       </div>
+
+      <div id="reviewTab" class="tab-content"></div>
     </div>
     <div class="buttons">
       <button onclick="closeBookPreview()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
@@ -171,6 +175,21 @@
   </div>
 </div>
 
+<!-- 신규 도서 신청 모달 -->
+<div id="bookRequestModal">
+  <div class="modal-box">
+    <h3>📝 신규 도서 신청</h3>
+    <input type="text" id="reqTitle" placeholder="도서 제목 *" />
+    <input type="text" id="reqAuthor" placeholder="저자 (선택)" />
+    <input type="text" id="reqRequester" placeholder="신청자 이름 *" />
+    <textarea id="reqReason" placeholder="신청 사유 (선택)"></textarea>
+    <div class="modal-actions">
+      <button id="closeBookRequestModal" style="background:#6b7280;">취소</button>
+      <button id="confirmBookRequest" style="background:#d97706;">신청하기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 도서 예약 모달 -->
 <div id="reservationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fff; padding:2rem; border-radius:8px; min-width:320px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
@@ -204,6 +223,8 @@
 <script src="js/dooray.js"></script>
 <script src="js/reservation.js"></script>
 <script src="js/reservations-panel.js"></script>
+<script src="js/book-request.js"></script>
+<script src="js/reviews.js"></script>
 <script src="js/main.js"></script>
 
 </body>

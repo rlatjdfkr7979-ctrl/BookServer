@@ -822,3 +822,246 @@ td.wrap-cell {
   background: #9ca3af;
   cursor: not-allowed;
 }
+
+/* ====== 도서 신청 모달 ====== */
+#bookRequestModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+#bookRequestModal .modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px;
+  width: 90%;
+  max-width: 460px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .25);
+}
+
+#bookRequestModal h3 {
+  margin: 0 0 20px 0;
+  color: #1f2937;
+  font-size: 1.1rem;
+}
+
+#bookRequestModal input,
+#bookRequestModal textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
+#bookRequestModal textarea {
+  height: 80px;
+  resize: vertical;
+}
+
+#bookRequestModal input:focus,
+#bookRequestModal textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, .15);
+}
+
+#bookRequestModal .modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ====== 별점 입력 ====== */
+.star-rating {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.star-rating .star {
+  cursor: pointer;
+  font-size: 1.5rem;
+  color: #d1d5db;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.star-rating .star.active {
+  color: #f59e0b;
+}
+
+.star-rating .star:hover,
+.star-rating .star:hover ~ .star {
+  color: #d1d5db;
+}
+
+.star-rating:hover .star {
+  color: #f59e0b;
+}
+
+.star-rating .star:hover ~ .star {
+  color: #d1d5db !important;
+}
+
+/* ====== 리뷰 카드 ====== */
+.review-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fafafa;
+}
+
+.review-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.review-card .review-stars {
+  color: #f59e0b;
+  font-size: 0.95rem;
+}
+
+.review-card .review-meta {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-left: auto;
+}
+
+.review-card .review-text {
+  font-size: 0.9rem;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.review-form {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 14px;
+  margin-top: 10px;
+}
+
+.review-form input,
+.review-form textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+
+.review-form textarea {
+  height: 70px;
+  resize: vertical;
+}
+
+.review-form input:focus,
+.review-form textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* ====== 480px 이하 모바일 최적화 ====== */
+@media (max-width: 480px) {
+  body {
+    padding: 12px 10px;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+  }
+
+  nav {
+    gap: 8px;
+  }
+
+  .nav-group {
+    gap: 5px;
+  }
+
+  .main-nav button {
+    font-size: 13px;
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+
+  .filter-nav button,
+  .action-nav button {
+    font-size: 12px;
+    padding: 8px 10px;
+    min-height: 44px;
+  }
+
+  #searchLibrary,
+  #searchLoans {
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 480px;
+  }
+
+  .pagination {
+    gap: 4px;
+  }
+
+  .pagination button {
+    padding: 6px 10px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+
+  #bookPreviewModal .inner {
+    width: 98%;
+    max-height: 92vh;
+  }
+
+  #bookPreviewModal .content {
+    padding: 14px;
+  }
+
+  #bookPreviewModal .book-header {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #bookPreviewModal .book-title {
+    font-size: 16px;
+    text-align: center;
+  }
+
+  #bookPreviewModal .book-author,
+  #bookPreviewModal .book-publisher {
+    text-align: center;
+  }
+
+  #bookRequestModal .modal-box {
+    padding: 20px 16px;
+  }
+
+  #reservationsPanel {
+    width: 98% !important;
+    max-height: 88vh !important;
+  }
+}

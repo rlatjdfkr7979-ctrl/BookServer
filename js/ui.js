@@ -150,7 +150,11 @@ async function showBookPreview(code, title, author = '') {
   const modal = document.getElementById('bookPreviewModal');
   const previewContent = document.getElementById('bookPreviewContent');
   const historyContent = document.getElementById('bookHistoryContent');
-  
+
+  // 현재 도서 정보 저장 (리뷰 탭에서 사용)
+  modal._bookCode = code;
+  modal._bookTitle = title;
+
   modal.style.display = 'flex';
   switchTab('preview');
   previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
@@ -323,13 +327,22 @@ function renderBookHistory(code, title, container) {
 function switchTab(tabName) {
   document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-  
+
   if (tabName === 'preview') {
     document.querySelectorAll('.tab-button')[0].classList.add('active');
     document.getElementById('previewTab').classList.add('active');
-  } else {
+  } else if (tabName === 'history') {
     document.querySelectorAll('.tab-button')[1].classList.add('active');
     document.getElementById('historyTab').classList.add('active');
+  } else if (tabName === 'reviews') {
+    document.querySelectorAll('.tab-button')[2].classList.add('active');
+    const reviewTab = document.getElementById('reviewTab');
+    reviewTab.classList.add('active');
+    // 리뷰 탭이 처음 열릴 때 렌더링
+    const modal = document.getElementById('bookPreviewModal');
+    if (modal._bookCode) {
+      renderReviewTab(modal._bookCode, modal._bookTitle, reviewTab);
+    }
   }
 }
 
