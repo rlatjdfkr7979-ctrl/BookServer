@@ -1083,4 +1083,20 @@ td.wrap-cell {
     width: 98% !important;
     max-height: 88vh !important;
   }
+
+  /* 모든 셀 줄바꿈 (ellipsis 제거) */
+  td {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  /* QR 컬럼 축소 (160px → 70px) */
+  #libraryTable th.qr-col,
+  #libraryTable td.qr-col {
+    width: 70px !important;
+    min-width: 70px !important;
+  }
 }
