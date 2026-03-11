@@ -225,7 +225,7 @@ async function fetchGoogleBooks(query) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko`;
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko&key=AIzaSyDOUbZEcW86ccHRJM64VJvch_oZXYhfm9o`;
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
