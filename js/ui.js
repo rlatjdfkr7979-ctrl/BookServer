@@ -3,16 +3,9 @@
    ======================================== */
 
 /* ====== QR 생성 ====== */
-function generateQR({code, title, author, renter, status}) {
-  // 상태에 따른 라디오박스 선택 로직 개선
-  let statusEncoded = "";
-  if (status.includes('반납')) {
-    statusEncoded = "%EB%B0%98%EB%82%A9"; // 반납
-  } else if (status.includes('대출') || status.includes('대여') || status.includes('연체')) {
-    statusEncoded = "%EB%8C%80%EC%B6%9C"; // 대출 (연체 포함)
-  }
-  
-  const url = `${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
+function generateQR({code}) {
+  // book.py와 동일한 방식: Apps Script가 시트에서 정보 조회 후 폼으로 리다이렉트
+  const url = `${APPS_SCRIPT_URL}?code=${encodeURIComponent(code)}`;
   const layer = document.createElement('div');
   layer.style = `position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1002;`;
   layer.innerHTML = `<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,.25)"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
@@ -152,43 +145,96 @@ function addSearch(inputId, tableId) {
   });
 }
 
+/* ====== Google Books 캐시 (24시간) ====== */
+const BOOK_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function getBookCache(title) {
+  try {
+    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > BOOK_CACHE_TTL) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function setBookCache(title, data) {
+  try {
+    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {} // localStorage 가득 차면 무시
+}
+
 /* ====== 도서 미리보기 모달 ====== */
 async function showBookPreview(code, title, author = '') {
   const modal = document.getElementById('bookPreviewModal');
   const previewContent = document.getElementById('bookPreviewContent');
   const historyContent = document.getElementById('bookHistoryContent');
-  
+
+  // 현재 도서 정보 저장 (리뷰 탭에서 사용)
+  modal._bookCode = code;
+  modal._bookTitle = title;
+
   modal.style.display = 'flex';
   switchTab('preview');
   previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
-  
+
+  // 캐시 확인 (API 호출 없이 즉시 표시)
+  const cached = getBookCache(title);
+  if (cached) {
+    renderBookInfo(cached, previewContent);
+    renderBookHistory(code, title, historyContent);
+    modal.onclick = (e) => { if (e.target === modal) closeBookPreview(); };
+    modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
+    return;
+  }
+
   try {
-    const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
-    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${searchQuery}&maxResults=5&langRestrict=ko`;
-    
-    const response = await fetch(apiUrl);
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      const bestMatch = findBestBookMatch(data.items, title);
+    const items = await fetchGoogleBooks(`${title} ${author}`.trim())
+      || await fetchGoogleBooks(title);
+
+    if (items && items.length > 0) {
+      const bestMatch = findBestBookMatch(items, title);
+      setBookCache(title, bestMatch); // 성공 시 캐시 저장
       renderBookInfo(bestMatch, previewContent);
     } else {
       renderBasicBookInfo(title, author, code, previewContent);
     }
-    
+
     renderBookHistory(code, title, historyContent);
-    
+
   } catch (error) {
     console.error('도서 정보 로드 실패:', error);
-    renderBasicBookInfo(title, author, code, previewContent);
+    const isTimeout = error.name === 'AbortError';
+    const notice = isTimeout
+      ? '⏱ Google Books API 응답 시간 초과 (네트워크 또는 방화벽 문제일 수 있습니다)'
+      : `⚠ Google Books API 오류 (${error.message}) — 잠시 후 다시 시도하거나 담당자에게 문의하세요`;
+    renderBasicBookInfo(title, author, code, previewContent, notice);
     renderBookHistory(code, title, historyContent);
   }
-  
+
   modal.onclick = (e) => {
     if (e.target === modal) closeBookPreview();
   };
-  
+
   modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
+}
+
+async function fetchGoogleBooks(query) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko&key=AIzaSyDOUbZEcW86ccHRJM64VJvch_oZXYhfm9o`;
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return data.items && data.items.length > 0 ? data.items : null;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
 }
 
 function findBestBookMatch(items, targetTitle) {
@@ -265,7 +311,7 @@ function renderBookInfo(bookData, container) {
   `;
 }
 
-function renderBasicBookInfo(title, author, code, container) {
+function renderBasicBookInfo(title, author, code, container, notice = '') {
   container.innerHTML = `
     <div class="book-header">
       <div class="book-cover">
@@ -277,8 +323,9 @@ function renderBasicBookInfo(title, author, code, container) {
         <p style="color:#6b7280;font-size:14px;">📚 코드: ${code}</p>
       </div>
     </div>
-    <div class="book-description" style="text-align:center;color:#6b7280;padding:40px;">
-      상세한 도서 정보를 찾을 수 없습니다.<br>
+    ${notice ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:13px;color:#92400e;">${notice}</div>` : ''}
+    <div class="book-description" style="text-align:center;color:#6b7280;padding:30px;">
+      Google Books에서 도서 정보를 찾을 수 없습니다.<br>
       도서관 내부 정보만 표시됩니다.
     </div>
   `;
@@ -325,13 +372,22 @@ function renderBookHistory(code, title, container) {
 function switchTab(tabName) {
   document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-  
+
   if (tabName === 'preview') {
     document.querySelectorAll('.tab-button')[0].classList.add('active');
     document.getElementById('previewTab').classList.add('active');
-  } else {
+  } else if (tabName === 'history') {
     document.querySelectorAll('.tab-button')[1].classList.add('active');
     document.getElementById('historyTab').classList.add('active');
+  } else if (tabName === 'reviews') {
+    document.querySelectorAll('.tab-button')[2].classList.add('active');
+    const reviewTab = document.getElementById('reviewTab');
+    reviewTab.classList.add('active');
+    // 리뷰 탭이 처음 열릴 때 렌더링
+    const modal = document.getElementById('bookPreviewModal');
+    if (modal._bookCode) {
+      renderReviewTab(modal._bookCode, modal._bookTitle, reviewTab);
+    }
   }
 }
 

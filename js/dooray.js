@@ -315,6 +315,146 @@ ${unreturned.length > 5 ? `... 외 ${unreturned.length - 5}권 더` : ''}
     return await this.sendNotification(message);
   }
 
+  // 📬 예약 DM 발송 (대출자에게 반납 요청)
+  async sendReservationDM(borrowerName, bookTitle, reserverName) {
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    if (!GAS_BACKEND_URL) {
+      return { success: false, error: 'Google Apps Script 백엔드 URL이 설정되지 않았습니다.' };
+    }
+
+    return new Promise((resolve) => {
+      const callbackName = 'jsonp_callback_' + Date.now();
+
+      window[callbackName] = function(data) {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve(data);
+      };
+
+      const script = document.createElement('script');
+      const params = new URLSearchParams({
+        action: 'sendReservationDM',
+        borrowerName,
+        bookTitle,
+        reserverName,
+        callback: callbackName
+      });
+
+      script.src = `${GAS_BACKEND_URL}?${params}`;
+      script.onerror = () => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve({ success: false, error: 'GAS 연결 실패: 스크립트 로드 오류' });
+      };
+
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          if (document.head.contains(script)) document.head.removeChild(script);
+          resolve({ success: false, error: 'GAS 요청 타임아웃 (30초)' });
+        }
+      }, 30000);
+
+      document.head.appendChild(script);
+    });
+  }
+
+  // 📥 예약 저장
+  async saveReservation(bookCode, bookTitle, borrowerName, reserverName) {
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    if (!GAS_BACKEND_URL) return { success: false, error: 'GAS URL이 설정되지 않았습니다.' };
+
+    return new Promise((resolve) => {
+      const callbackName = 'jsonp_cb_' + Date.now();
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve(data);
+      };
+      const script = document.createElement('script');
+      script.src = GAS_BACKEND_URL + '?' + new URLSearchParams({
+        action: 'saveReservation', bookCode, bookTitle, borrowerName, reserverName, callback: callbackName
+      });
+      script.onerror = () => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve({ success: false, error: 'GAS 연결 실패' });
+      };
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          if (document.head.contains(script)) document.head.removeChild(script);
+          resolve({ success: false, error: '요청 타임아웃' });
+        }
+      }, 30000);
+      document.head.appendChild(script);
+    });
+  }
+
+  // 📋 예약 목록 조회 (bookCode 빈 문자열 = 전체)
+  async getReservations(bookCode = '') {
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    if (!GAS_BACKEND_URL) return { success: false, error: 'GAS URL이 설정되지 않았습니다.' };
+
+    return new Promise((resolve) => {
+      const callbackName = 'jsonp_cb_' + Date.now();
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve(data);
+      };
+      const script = document.createElement('script');
+      script.src = GAS_BACKEND_URL + '?' + new URLSearchParams({
+        action: 'getReservations', bookCode, callback: callbackName
+      });
+      script.onerror = () => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve({ success: false, error: 'GAS 연결 실패' });
+      };
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          if (document.head.contains(script)) document.head.removeChild(script);
+          resolve({ success: false, error: '요청 타임아웃' });
+        }
+      }, 30000);
+      document.head.appendChild(script);
+    });
+  }
+
+  // ❌ 예약 취소
+  async cancelReservation(reservationId) {
+    const GAS_BACKEND_URL = localStorage.getItem('gas_backend_url') || '';
+    if (!GAS_BACKEND_URL) return { success: false, error: 'GAS URL이 설정되지 않았습니다.' };
+
+    return new Promise((resolve) => {
+      const callbackName = 'jsonp_cb_' + Date.now();
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve(data);
+      };
+      const script = document.createElement('script');
+      script.src = GAS_BACKEND_URL + '?' + new URLSearchParams({
+        action: 'cancelReservation', reservationId, callback: callbackName
+      });
+      script.onerror = () => {
+        delete window[callbackName];
+        if (document.head.contains(script)) document.head.removeChild(script);
+        resolve({ success: false, error: 'GAS 연결 실패' });
+      };
+      setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          if (document.head.contains(script)) document.head.removeChild(script);
+          resolve({ success: false, error: '요청 타임아웃' });
+        }
+      }, 30000);
+      document.head.appendChild(script);
+    });
+  }
+
   // 🧪 연결 테스트
   async testConnection() {
     if (!this.isEnabled) {

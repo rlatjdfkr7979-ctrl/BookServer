@@ -30,6 +30,8 @@
   
   <div class="nav-group action-nav">
     <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
+    <button id="btnBookRequest" style="background:#d97706;">📝 도서 신청</button>
+    <button id="btnReservations" style="background:#0891b2;" onclick="openReservationsPanel()">📋 예약 현황 <span id="reservationWaitCount" style="font-size:11px;background:#fff;color:#0891b2;border-radius:10px;padding:1px 6px;margin-left:4px;"></span></button>
     <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
   </div>
 </nav>
@@ -66,17 +68,20 @@
       <div class="tab-buttons">
         <button class="tab-button active" onclick="switchTab('preview')">📚 도서 정보</button>
         <button class="tab-button" onclick="switchTab('history')">📋 대출 이력</button>
+        <button class="tab-button" onclick="switchTab('reviews')">⭐ 리뷰</button>
       </div>
-      
+
       <div id="previewTab" class="tab-content active">
         <div id="bookPreviewContent">
           <div class="loading">📚 도서 정보를 불러오는 중...</div>
         </div>
       </div>
-      
+
       <div id="historyTab" class="tab-content">
         <div id="bookHistoryContent"></div>
       </div>
+
+      <div id="reviewTab" class="tab-content"></div>
     </div>
     <div class="buttons">
       <button onclick="closeBookPreview()" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:8px 16px;width:100%;">닫기</button>
@@ -135,6 +140,112 @@
   </div>
 </div>
 
+<!-- 예약 현황 패널 오버레이 -->
+<div id="reservationsPanelOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:900;" onclick="closeReservationsPanel()"></div>
+
+<!-- 예약 현황 패널 -->
+<div id="reservationsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:860px;max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.25);z-index:950;flex-direction:column;">
+  <div style="padding:1.2rem 1.5rem 0.8rem;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;font-size:1.1rem;">📋 예약 현황</h3>
+    <button onclick="closeReservationsPanel()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280;line-height:1;">×</button>
+  </div>
+  <div style="padding:0.8rem 1.5rem;display:flex;gap:6px;flex-wrap:wrap;">
+    <button class="res-filter-btn active" data-status="전체" onclick="filterReservations('전체')">전체</button>
+    <button class="res-filter-btn" data-status="대기" onclick="filterReservations('대기')">⏳ 대기</button>
+    <button class="res-filter-btn" data-status="완료" onclick="filterReservations('완료')">✅ 완료</button>
+    <button class="res-filter-btn" data-status="취소" onclick="filterReservations('취소')">❌ 취소</button>
+    <button onclick="loadAllReservations ? loadAllReservations() : openReservationsPanel()" style="margin-left:auto;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;">🔄 새로고침</button>
+  </div>
+  <div style="overflow-y:auto;flex:1;padding:0 1.5rem 1.2rem;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <thead>
+        <tr style="background:#f8fafc;position:sticky;top:0;">
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">도서명</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">코드</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">예약자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">대출자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">예약일시</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;font-weight:600;">상태</th>
+        </tr>
+      </thead>
+      <tbody id="reservationsTbody">
+        <tr><td colspan="6" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 도서 신청 패널 오버레이 -->
+<div id="bookRequestPanelOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:900;" onclick="closeBookRequestPanel()"></div>
+
+<!-- 도서 신청 패널 -->
+<div id="bookRequestPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:700px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.25);z-index:950;flex-direction:column;">
+  <div style="padding:1.2rem 1.5rem 0.8rem;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;font-size:1.1rem;">📝 도서 신청</h3>
+    <button onclick="closeBookRequestPanel()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280;line-height:1;">×</button>
+  </div>
+  <!-- 탭 -->
+  <div style="padding:0.6rem 1.5rem 0;display:flex;gap:6px;border-bottom:1px solid #e5e7eb;">
+    <button class="req-tab-btn active" data-tab="form" onclick="switchReqTab('form')" style="background:none;border:none;border-bottom:2px solid #d97706;color:#d97706;padding:6px 12px;font-weight:600;cursor:pointer;font-size:0.9rem;">✍️ 신청하기</button>
+    <button class="req-tab-btn" data-tab="list" onclick="switchReqTab('list')" style="background:none;border:none;border-bottom:2px solid transparent;color:#6b7280;padding:6px 12px;cursor:pointer;font-size:0.9rem;">📋 신청 현황</button>
+  </div>
+  <!-- 신청 폼 탭 -->
+  <div id="reqFormTab" style="padding:1.2rem 1.5rem;overflow-y:auto;flex:1;">
+    <input type="text" id="reqTitle" placeholder="도서 제목 *" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
+    <input type="text" id="reqAuthor" placeholder="저자 (선택)" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
+    <input type="text" id="reqRequester" placeholder="신청자 이름 *" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
+    <textarea id="reqReason" placeholder="신청 사유 (선택)" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;height:80px;resize:vertical;"></textarea>
+    <div style="text-align:right;">
+      <button id="confirmBookRequest" style="background:#d97706;padding:9px 20px;">신청하기</button>
+    </div>
+  </div>
+  <!-- 신청 현황 탭 -->
+  <div id="reqListTab" style="display:none;overflow-y:auto;flex:1;padding:0 1.5rem 1.2rem;">
+    <div style="padding:0.8rem 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <button class="req-status-filter active" data-status="전체" onclick="filterBookRequests('전체')">전체</button>
+      <button class="req-status-filter" data-status="대기" onclick="filterBookRequests('대기')">⏳ 대기</button>
+      <button class="req-status-filter" data-status="완료" onclick="filterBookRequests('완료')">✅ 완료</button>
+      <button class="req-status-filter" data-status="취소" onclick="filterBookRequests('취소')">❌ 취소</button>
+      <button onclick="loadBookRequests()" style="margin-left:auto;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;">🔄 새로고침</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+      <thead>
+        <tr style="background:#f8fafc;position:sticky;top:0;">
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">도서 제목</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">저자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">신청자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">신청일</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">상태</th>
+          <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #e5e7eb;">처리</th>
+        </tr>
+      </thead>
+      <tbody id="bookRequestsTbody">
+        <tr><td colspan="6" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 도서 예약 모달 -->
+<div id="reservationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; padding:2rem; border-radius:8px; min-width:320px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+    <h3 style="margin:0 0 1rem 0;">📅 도서 예약</h3>
+    <p style="margin:0 0 0.5rem 0; color:#374151;"><strong id="reservationBookTitle"></strong></p>
+    <p style="margin:0 0 1rem 0;">현재 대출자: <span id="reservationBorrower" style="color:#dc2626; font-weight:600;"></span></p>
+    <hr style="border:none; border-top:1px solid #e5e7eb; margin-bottom:1rem;"/>
+    <label style="display:block; margin-bottom:0.5rem; font-weight:500;">예약자 이름</label>
+    <input type="text" id="reserverNameInput" placeholder="이름을 입력하세요"
+           style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:4px; box-sizing:border-box; font-size:1rem;" />
+    <p style="font-size:0.85rem; color:#6b7280; margin:0.5rem 0 1.5rem 0;">
+      대출자에게 반납 요청 메시지가 Dooray DM으로 발송됩니다.
+    </p>
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+      <button id="cancelReserveBtn" style="padding:0.5rem 1.2rem; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:4px; cursor:pointer;">취소</button>
+      <button id="confirmReserveBtn" style="padding:0.5rem 1.2rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:500;">예약 및 메시지 발송</button>
+    </div>
+  </div>
+</div>
+
 <footer>© 울산도시공사 도서관리 시스템 | 시스템 문의(김성락 대리 417)</footer>
 
 <!-- 라이브러리 -->
@@ -146,6 +257,11 @@
 <script src="js/table.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/dooray.js"></script>
+<script src="js/reservation.js"></script>
+<script src="js/reservations-panel.js"></script>
+<script src="js/book-request.js"></script>
+<script src="js/book-requests-panel.js"></script>
+<script src="js/reviews.js"></script>
 <script src="js/main.js"></script>
 
 </body>

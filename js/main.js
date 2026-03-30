@@ -86,6 +86,20 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   renderTable(library, 'libraryTable', true);
   addSearch('searchLoans', 'loanTable');
   addSearch('searchLibrary', 'libraryTable');
+
+  // 예약 데이터 로드 (GAS URL이 설정된 경우)
+  if (localStorage.getItem('gas_backend_url') && window.doorayIntegration) {
+    window.doorayIntegration.getReservations('').then(result => {
+      if (result && result.success) {
+        window.reservationData = result.data || [];
+        if (window.reservationData.length > 0) applyAllFilters();
+        // 예약현황 버튼 뱃지 갱신
+        const waitCount = window.reservationData.filter(r => r.status === '대기').length;
+        const el = document.getElementById('reservationWaitCount');
+        if (el) el.textContent = waitCount > 0 ? `대기 ${waitCount}건` : '';
+      }
+    }).catch(() => {});
+  }
 });
 
 /* ====== 필터 함수 ====== */
@@ -247,6 +261,10 @@ document.getElementById('btnRecent').onclick = () => {
 
 document.getElementById('btnAddBook').onclick = () => {
   window.open(ADD_BOOK_FORM_URL, '_blank');
+};
+
+document.getElementById('btnBookRequest').onclick = () => {
+  showBookRequestModal();
 };
 
 document.getElementById('btnDooraySync').onclick = () => {
