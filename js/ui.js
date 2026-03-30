@@ -3,16 +3,9 @@
    ======================================== */
 
 /* ====== QR 생성 ====== */
-function generateQR({code, title, author, renter, status}) {
-  // 상태에 따른 라디오박스 선택 로직 개선
-  let statusEncoded = "";
-  if (status.includes('반납')) {
-    statusEncoded = "%EB%B0%98%EB%82%A9"; // 반납
-  } else if (status.includes('대출') || status.includes('대여') || status.includes('연체')) {
-    statusEncoded = "%EB%8C%80%EC%B6%9C"; // 대출 (연체 포함)
-  }
-  
-  const url = `${FORM_URL}?usp=pp_url&${ENTRY_IDS.code}=${encodeURIComponent(code)}&${ENTRY_IDS.title}=${encodeURIComponent(title)}&${ENTRY_IDS.author}=${encodeURIComponent(author)}&${ENTRY_IDS.renter}=${encodeURIComponent(renter)}&${ENTRY_IDS.status}=${statusEncoded}`;
+function generateQR({code}) {
+  // book.py와 동일한 방식: Apps Script가 시트에서 정보 조회 후 폼으로 리다이렉트
+  const url = `${APPS_SCRIPT_URL}?code=${encodeURIComponent(code)}`;
   const layer = document.createElement('div');
   layer.style = `position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1002;`;
   layer.innerHTML = `<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,.25)"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
