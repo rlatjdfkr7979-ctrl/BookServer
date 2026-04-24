@@ -193,6 +193,7 @@
   <div id="reqFormTab" style="padding:1.2rem 1.5rem;overflow-y:auto;flex:1;">
     <input type="text" id="reqTitle" placeholder="도서 제목 *" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
     <input type="text" id="reqAuthor" placeholder="저자 (선택)" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
+    <input type="text" id="reqPublisher" placeholder="출판사 (선택)" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
     <input type="text" id="reqRequester" placeholder="신청자 이름 *" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;" />
     <textarea id="reqReason" placeholder="신청 사유 (선택)" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;height:80px;resize:vertical;"></textarea>
     <div style="text-align:right;">
@@ -213,6 +214,7 @@
         <tr style="background:#f8fafc;position:sticky;top:0;">
           <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">도서 제목</th>
           <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">저자</th>
+          <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">출판사</th>
           <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">신청자</th>
           <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">신청일</th>
           <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e5e7eb;">상태</th>
@@ -220,7 +222,7 @@
         </tr>
       </thead>
       <tbody id="bookRequestsTbody">
-        <tr><td colspan="6" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>
+        <tr><td colspan="7" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>
       </tbody>
     </table>
   </div>
