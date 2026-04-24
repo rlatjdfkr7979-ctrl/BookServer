@@ -48,14 +48,20 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
     const status = norm(books[i][bStatusIdx]);
     const borrower = norm(books[i][bUserIdx]);
     if (!code) continue;
-    if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: ''};
-    if (status.includes('반납')) latestByCode[code].lastReturn = date;
+    if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: '', loanDate: ''};
+    if (status.includes('반납')) {
+      latestByCode[code].lastReturn = date;
+      latestByCode[code].loanDate = '';
+    } else {
+      latestByCode[code].loanDate = date;
+    }
     latestByCode[code].status = status;
     latestByCode[code].borrower = borrower;
   }
 
   const lh = library[0].map(norm);
   const lCodeIdx = findColIndex(lh, ['코드', '코드번호']);
+  const lGenreIdx = findColIndex(lh, ['장르']);
   let lStatusIdx = findColIndex(lh, ['상태', '대출여부']);
   let lUserIdx = findColIndex(lh, ['대여자', '대출자']);
   if (lStatusIdx === -1) {library[0].push('대출여부'); lStatusIdx = library[0].length - 1;}
@@ -74,11 +80,13 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
       library[i][lUserIdx] = '';
     } else {
       library[i][lUserIdx] = rec.borrower || '';
-      const loanRow = books.find(b => norm(b[bCodeIdx]) === code && !b[bStatusIdx].includes('반납'));
-      const loanDate = loanRow ? loanRow[bDateIdx] : '';
-      const loanStatus = calculateLoanStatus(loanDate, rec.status);
+      const loanDate = rec.loanDate || '';
+      const genre = lGenreIdx !== -1 ? (library[i][lGenreIdx] || '') : '';
+      const loanPeriod = genre.includes('전공·자격증·어학') ? 90 : 30;
+      const loanStatus = calculateLoanStatus(loanDate, rec.status, loanPeriod);
       library[i][lStatusIdx] = loanStatus.displayText;
       library[i]._statusInfo = loanStatus;
+      library[i]._loanPeriod = loanPeriod;
     }
   }
 
