@@ -9,7 +9,7 @@ function showBookRequestModal() {
 }
 
 function clearBookRequestForm() {
-  ['reqTitle', 'reqAuthor', 'reqRequester', 'reqReason'].forEach(id => {
+  ['reqTitle', 'reqAuthor', 'reqPublisher', 'reqRequester', 'reqReason'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -18,6 +18,7 @@ function clearBookRequestForm() {
 async function submitBookRequest() {
   const title = document.getElementById('reqTitle').value.trim();
   const author = document.getElementById('reqAuthor').value.trim();
+  const publisher = document.getElementById('reqPublisher').value.trim();
   const requester = document.getElementById('reqRequester').value.trim();
   const reason = document.getElementById('reqReason').value.trim();
 
@@ -39,6 +40,7 @@ async function submitBookRequest() {
       action: 'saveBookRequest',
       bookTitle: title,
       author: author,
+      publisher: publisher,
       reason: reason,
       requesterName: requester
     });
@@ -96,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('confirmBookRequest').addEventListener('click', submitBookRequest);
 
   // Enter 키 지원
-  ['reqTitle', 'reqAuthor', 'reqRequester'].forEach(id => {
+  ['reqTitle', 'reqAuthor', 'reqPublisher', 'reqRequester'].forEach(id => {
     document.getElementById(id).addEventListener('keydown', (e) => {
       if (e.key === 'Enter') submitBookRequest();
     });
