@@ -42,11 +42,11 @@ function switchReqTab(tabName) {
 
 async function loadBookRequests() {
   const tbody = document.getElementById('bookRequestsTbody');
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:30px;">로딩 중...</td></tr>';
 
   const gasUrl = localStorage.getItem('gas_backend_url');
   if (!gasUrl) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:30px;">GAS URL이 설정되지 않았습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">GAS URL이 설정되지 않았습니다.</td></tr>';
     return;
   }
 
@@ -56,10 +56,10 @@ async function loadBookRequests() {
       _allBookRequests = result.data || [];
       renderBookRequestList(_reqActiveFilter);
     } else {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:30px;">불러오기 실패: ' + escHtml(result && result.error ? result.error : '알 수 없는 오류') + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:30px;">불러오기 실패: ' + escHtml(result && result.error ? result.error : '알 수 없는 오류') + '</td></tr>';
     }
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:30px;">오류: ' + escHtml(err.message) + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:30px;">오류: ' + escHtml(err.message) + '</td></tr>';
   }
 }
 
@@ -83,7 +83,7 @@ function renderBookRequestList(statusFilter) {
 
   if (filtered.length === 0) {
     const msg = statusFilter === '전체' ? '신청 내역이 없습니다.' : `"${statusFilter}" 상태의 신청이 없습니다.`;
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:30px;">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">${msg}</td></tr>`;
     return;
   }
 
@@ -101,6 +101,7 @@ function renderBookRequestList(statusFilter) {
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;">${escHtml(r.bookTitle)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;">${escHtml(r.author || '-')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;">${escHtml(r.publisher || '-')}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">${escHtml(r.requesterName)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">${escHtml(dateStr)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">
