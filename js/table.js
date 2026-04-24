@@ -327,17 +327,15 @@ function sortTable(originalRows, tableId, colIdx, withQR = false) {
   // 정렬 후 행 색상 다시 적용 (도서목록의 경우)
   if (withQR) {
     const statusIdx = findColIndex(header, ['상태', '대출여부']);
-    
+
     const currentData = allTableData[tableId];
     for (let i = 1; i < currentData.length; i++) {
-      const status = currentData[i][statusIdx] || '';
-      const loanDate = currentData[i][findColIndex(header, ['대출일', '등록일'])] || '';
-      
-      // 연체 확인
-      const statusInfo = window.calculateLoanStatus(loanDate, status);
-      currentData[i]._statusInfo = statusInfo;
+      if (!currentData[i]._statusInfo) {
+        const status = currentData[i][statusIdx] || '';
+        currentData[i]._statusInfo = {status: status, displayText: status, className: ''};
+      }
     }
-    
+
     // 재렌더링
     renderTableWithPagination(currentData, tableId, withQR);
   }
@@ -346,28 +344,27 @@ function sortTable(originalRows, tableId, colIdx, withQR = false) {
 window.sortTable = sortTable;
 
 /* ====== 연체 판별 ====== */
-function isOverdue(dateStr, status) {
+function isOverdue(dateStr, status, loanPeriod = 30) {
   if (!dateStr || status.includes('반납')) return false;
   const d = new Date(dateStr);
   if (isNaN(d)) return false;
   const diff = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
-  return diff > 14;
+  return diff > loanPeriod;
 }
 
 /* ====== 대출 상태 및 남은 일수 계산 ====== */
-function calculateLoanStatus(dateStr, status) {
+function calculateLoanStatus(dateStr, status, loanPeriod = 30) {
   if (!dateStr || status.includes('반납')) {
     return {status: '반납', displayText: status, className: ''};
   }
-  
+
   const loanDate = new Date(dateStr);
   if (isNaN(loanDate)) {
     return {status: status, displayText: status, className: ''};
   }
-  
+
   const now = new Date();
   const diffInDays = Math.floor((now.getTime() - loanDate.getTime()) / (1000 * 60 * 60 * 24));
-  const loanPeriod = 14; // 대출 기간 14일
   const remainingDays = loanPeriod - diffInDays;
   
   if (remainingDays > 0) {
@@ -397,4 +394,3 @@ function calculateLoanStatus(dateStr, status) {
 
 window.isOverdue = isOverdue;
 window.calculateLoanStatus = calculateLoanStatus;
-
