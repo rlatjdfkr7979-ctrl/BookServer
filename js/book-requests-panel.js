@@ -99,8 +99,8 @@ function renderBookRequestList(statusFilter) {
     const isPending = r.status === '대기';
     return `
       <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;max-width:180px;word-break:break-word;">${escHtml(r.bookTitle)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">${escHtml(r.author || '-')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;">${escHtml(r.bookTitle)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;">${escHtml(r.author || '-')}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">${escHtml(r.requesterName)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">${escHtml(dateStr)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">
