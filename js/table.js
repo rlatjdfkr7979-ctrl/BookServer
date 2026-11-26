@@ -6,7 +6,21 @@
 let currentPage = {loanTable: 1, libraryTable: 1};
 let totalPages = {loanTable: 1, libraryTable: 1};
 let allTableData = {loanTable: [], libraryTable: []};
-let sortState = {}; // 각 테이블의 정렬 상태 저장
+
+/* 테이블별 뷰 상태: 원본(source) → 필터 → 검색 → 정렬 → 페이지 순으로 항상 한 파이프라인으로 처리
+   source : 원본 행 배열 (헤더 포함)
+   filter : 행 → boolean (대출 중, 최근 30일 등)
+   newest : 최신 등록순 정렬 여부
+   query  : 검색어 (소문자)
+   sort   : {col, asc} | null (헤더 클릭 정렬)  */
+const tableState = {};
+function getTableState(id) {
+  if (!tableState[id]) {
+    tableState[id] = {source: [], withQR: false, filter: null, newest: false, query: '', sort: null};
+  }
+  return tableState[id];
+}
+window.getTableState = getTableState;
 
 // 전역에 노출
 window.currentPage = currentPage;
@@ -26,6 +40,20 @@ window.norm = norm;
 window.normHead = normHead;
 window.includesAny = includesAny;
 window.findColIndex = findColIndex;
+
+/* ====== 날짜 파서 (YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD / "2024. 1. 5 오후 3:20" 등) ======
+   브라우저마다 다른 new Date(문자열) 동작을 피하기 위해 직접 파싱. 실패 시 NaN */
+function parseDate(str) {
+  const s = norm(str);
+  if (!s) return NaN;
+  const m = s.match(/^(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})/);
+  if (m) {
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d) ? NaN : d.getTime();
+  }
+  return NaN;
+}
+window.parseDate = parseDate;
 
 /* ====== CSV 로드 ====== */
 async function loadCSV(file) {
@@ -98,15 +126,90 @@ window.createPagination = createPagination;
 window.changePage = changePage;
 
 /* ====== 테이블 렌더링 ====== */
+/* 원본 데이터를 설정하고 화면 갱신 (검색어/정렬/필터 상태는 유지, 페이지는 1로) */
 function renderTable(rows, id, withQR = false) {
-  // 전체 데이터 저장
-  allTableData[id] = [...rows];
-  renderTableWithPagination(rows, id, withQR);
-  
-  // 페이지네이션 생성
-  const paginationId = id === 'loanTable' ? 'loanPagination' : 'libraryPagination';
-  createPagination(id, paginationId, rows.length - 1); // 헤더 제외
+  const st = getTableState(id);
+  st.source = rows;
+  st.withQR = withQR;
+  currentPage[id] = 1;
+  refreshTable(id);
 }
+
+/* 표시용 데이터 계산: 필터 → 검색 → (최신순) → 정렬 */
+function computeView(id) {
+  const st = getTableState(id);
+  const src = st.source;
+  if (!src || src.length === 0) return [[]];
+  const header = src[0];
+  let data = src.slice(1);
+
+  if (st.filter) data = data.filter(st.filter);
+
+  if (st.query) {
+    data = data.filter(row => row.join(' ').toLowerCase().includes(st.query));
+  }
+
+  if (st.newest) {
+    // 행 순서를 뒤집은 뒤, 날짜 열이 있으면 날짜 내림차순(동일 날짜는 뒤집힌 순서 유지)
+    data = data.slice().reverse();
+    const dIdx = findColIndex(header, ['등록일', '일자', '날짜', '입고일', '구입일', '대출일']);
+    if (dIdx !== -1) {
+      data = data
+        .map((row, i) => ({row, i, t: parseDate(row[dIdx])}))
+        .sort((a, b) => {
+          if (isNaN(a.t) && isNaN(b.t)) return a.i - b.i;
+          if (isNaN(a.t)) return 1;
+          if (isNaN(b.t)) return -1;
+          return (b.t - a.t) || (a.i - b.i);
+        })
+        .map(x => x.row);
+    }
+  }
+
+  if (st.sort) data = sortRows(data, st.sort.col, st.sort.asc);
+
+  return [header, ...data];
+}
+
+/* 상태(검색/필터/정렬)를 반영해 테이블과 페이지네이션 다시 그림 */
+function refreshTable(id, {keepPage = false} = {}) {
+  const st = getTableState(id);
+  const view = computeView(id);
+  allTableData[id] = view; // 현재 표시 대상 (검색/필터/정렬 반영된 전체 목록)
+
+  const total = view.length - 1;
+  const pages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+  if (!keepPage) currentPage[id] = 1;
+  currentPage[id] = Math.min(Math.max(1, currentPage[id] || 1), pages);
+
+  if (view[0] && view[0].length) {
+    renderTableWithPagination(view, id, st.withQR);
+  } else {
+    document.getElementById(id).innerHTML = '';
+  }
+  const paginationId = id === 'loanTable' ? 'loanPagination' : 'libraryPagination';
+  createPagination(id, paginationId, total);
+  updateResultInfo(id, total, st);
+}
+
+/* 검색/필터로 줄어든 경우 결과 건수 / 결과 없음 안내 */
+function updateResultInfo(id, total, st) {
+  const table = document.getElementById(id);
+  const wrap = table.parentNode;
+  let info = wrap.parentNode.querySelector(`.result-info[data-for="${id}"]`);
+  const filtered = st.query || st.filter;
+  if (!filtered) { if (info) info.remove(); return; }
+  if (!info) {
+    info = document.createElement('div');
+    info.className = 'result-info';
+    info.dataset.for = id;
+    info.style.cssText = 'margin:6px 2px;font-size:13px;color:#6b7280;';
+    wrap.parentNode.insertBefore(info, wrap);
+  }
+  info.textContent = total === 0 ? '검색 결과가 없습니다.' : `검색 결과 ${total}건`;
+}
+
+window.refreshTable = refreshTable;
 
 function renderTableWithPagination(rows, id, withQR = false) {
   const header = rows[0];
@@ -129,28 +232,30 @@ function renderTableWithPagination(rows, id, withQR = false) {
   finalHeader.forEach((h, idx) => {
     const th = document.createElement('th');
     th.textContent = h;
-    
+
     // QR 생성 헤더에는 식별용 클래스 부여 (폭 고정 및 정렬)
     if (withQR && idx === header.length) {
       th.classList.add('qr-col');
     }
-    
+
     // QR 생성 열이 아닌 경우에만 정렬 기능 추가
     if (idx < header.length) {
       th.style.cursor = 'pointer';
       th.style.userSelect = 'none';
-      th.onclick = () => sortTable(rows, id, idx, withQR);
-      
-      // 정렬 표시를 위한 스타일
+      th.onclick = () => sortTable(id, idx);
+
+      // 현재 정렬 상태 표시 (페이지 이동/재렌더링 후에도 유지)
+      const sort = getTableState(id).sort;
+      const isSorted = sort && sort.col === idx;
+      if (isSorted) {
+        th.textContent = h + (sort.asc ? ' ↑' : ' ↓');
+        th.style.background = '#dbeafe';
+      }
       th.addEventListener('mouseenter', () => {
-        if (!th.textContent.includes('↑') && !th.textContent.includes('↓')) {
-          th.style.background = '#e2e8f0';
-        }
+        if (!isSorted) th.style.background = '#e2e8f0';
       });
       th.addEventListener('mouseleave', () => {
-        if (!th.textContent.includes('↑') && !th.textContent.includes('↓')) {
-          th.style.background = '#f1f5f9';
-        }
+        if (!isSorted) th.style.background = '#f1f5f9';
       });
     }
     headerRow.appendChild(th);
@@ -262,83 +367,61 @@ function renderTableWithPagination(rows, id, withQR = false) {
 window.renderTable = renderTable;
 window.renderTableWithPagination = renderTableWithPagination;
 
-// 예약 뱃지만 재렌더링 (예약 후 즉시 반영용)
+// 예약 뱃지만 재렌더링 (예약 후 즉시 반영용) - 검색어/정렬/페이지 유지
 window.updateReservationBadges = function() {
-  document.querySelectorAll('.reserve-btn').forEach(btn => {
-    const modal = document.getElementById('reservationModal');
-    // 버튼의 onclick에서 bookCode를 추출하기 어려우므로 전체 테이블 재렌더
+  Object.keys(tableState).forEach(id => {
+    if (tableState[id].source.length) refreshTable(id, {keepPage: true});
   });
-  // 전체 테이블 재렌더 (가장 확실한 방법)
-  if (typeof window.applyAllFilters === 'function') window.applyAllFilters();
 };
 
 /* ====== 테이블 정렬 ====== */
-function sortTable(originalRows, tableId, colIdx, withQR = false) {
-  const header = originalRows[0];
-  
-  // 정렬 상태 확인 (기본: 오름차순)
-  const sortKey = `${tableId}_${colIdx}`;
-  const isAsc = !sortState[sortKey]; // 현재 상태의 반대로 설정
-  sortState[sortKey] = isAsc;
-  
-  // 전체 데이터를 정렬 (헤더 제외)
-  const dataRows = allTableData[tableId].slice(1);
-  dataRows.sort((a, b) => {
-    const aVal = a[colIdx] || '';
-    const bVal = b[colIdx] || '';
-    
-    // 숫자인지 확인
-    const aNum = parseFloat(String(aVal).replace(/[^\d.-]/g, ''));
-    const bNum = parseFloat(String(bVal).replace(/[^\d.-]/g, ''));
-    
-    let result;
-    if (!isNaN(aNum) && !isNaN(bNum)) {
-      result = aNum - bNum; // 숫자 정렬
-    } else {
-      result = String(aVal).localeCompare(String(bVal), 'ko', {numeric: true}); // 문자열 정렬
-    }
-    
-    return isAsc ? result : -result;
-  });
-  
-  // 정렬된 데이터로 테이블 업데이트
-  const sortedData = [header, ...dataRows];
-  allTableData[tableId] = sortedData;
-  
-  // 첫 페이지로 이동하고 재렌더링
-  currentPage[tableId] = 1;
-  renderTableWithPagination(sortedData, tableId, withQR);
-  
-  // 페이지네이션 업데이트
-  const paginationId = tableId === 'loanTable' ? 'loanPagination' : 'libraryPagination';
-  createPagination(tableId, paginationId, sortedData.length - 1);
-  
-  // 헤더에 정렬 표시 추가
-  const table = document.getElementById(tableId);
-  table.querySelectorAll('th').forEach(th => {
-    th.textContent = th.textContent.replace(/\s*[↑↓]\s*/, '');
-    th.style.background = '#f1f5f9';
-  });
-  
-  const currentTh = table.querySelectorAll('th')[colIdx];
-  currentTh.textContent += isAsc ? ' ↑' : ' ↓';
-  currentTh.style.background = '#dbeafe';
-  
-  // 정렬 후 행 색상 다시 적용 (도서목록의 경우)
-  if (withQR) {
-    const statusIdx = findColIndex(header, ['상태', '대출여부']);
-
-    const currentData = allTableData[tableId];
-    for (let i = 1; i < currentData.length; i++) {
-      if (!currentData[i]._statusInfo) {
-        const status = currentData[i][statusIdx] || '';
-        currentData[i]._statusInfo = {status: status, displayText: status, className: ''};
-      }
-    }
-
-    // 재렌더링
-    renderTableWithPagination(currentData, tableId, withQR);
+// 열 종류 판별: 모든 값이 날짜 → date, 모든 값이 순수 숫자 → number, 그 외 → string
+function detectColType(rows, col) {
+  let type = null;
+  for (const row of rows) {
+    const v = norm(row[col]);
+    if (!v) continue;
+    const isNum = /^-?\d+(\.\d+)?$/.test(v);
+    const isDate = !isNaN(parseDate(v));
+    const t = isDate ? 'date' : isNum ? 'number' : 'string';
+    if (type === null) type = t;
+    else if (type !== t) return 'string';
+    if (type === 'string') return 'string';
   }
+  return type || 'string';
+}
+
+function sortRows(rows, col, asc) {
+  const type = detectColType(rows, col);
+  const key = row => {
+    const v = norm(row[col]);
+    if (!v) return null;
+    if (type === 'date') return parseDate(v);
+    if (type === 'number') return parseFloat(v);
+    return v;
+  };
+  const dir = asc ? 1 : -1;
+  return rows
+    .map((row, i) => ({row, i, k: key(row)}))
+    .sort((a, b) => {
+      // 빈 값은 방향과 상관없이 항상 맨 뒤
+      if (a.k === null && b.k === null) return a.i - b.i;
+      if (a.k === null) return 1;
+      if (b.k === null) return -1;
+      const r = type === 'string'
+        ? a.k.localeCompare(b.k, 'ko', {numeric: true})
+        : a.k - b.k;
+      return r ? r * dir : a.i - b.i;
+    })
+    .map(x => x.row);
+}
+
+// 헤더 클릭: 같은 열이면 오름/내림 토글, 다른 열이면 오름차순부터. 검색/필터는 그대로 유지
+function sortTable(tableId, colIdx) {
+  const st = getTableState(tableId);
+  const asc = st.sort && st.sort.col === colIdx ? !st.sort.asc : true;
+  st.sort = {col: colIdx, asc};
+  refreshTable(tableId);
 }
 
 window.sortTable = sortTable;
@@ -346,9 +429,9 @@ window.sortTable = sortTable;
 /* ====== 연체 판별 ====== */
 function isOverdue(dateStr, status, loanPeriod = 30) {
   if (!dateStr || status.includes('반납')) return false;
-  const d = new Date(dateStr);
-  if (isNaN(d)) return false;
-  const diff = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+  const t = parseDate(dateStr);
+  if (isNaN(t)) return false;
+  const diff = (Date.now() - t) / (1000 * 60 * 60 * 24);
   return diff > loanPeriod;
 }
 
@@ -358,7 +441,7 @@ function calculateLoanStatus(dateStr, status, loanPeriod = 30) {
     return {status: '반납', displayText: status, className: ''};
   }
 
-  const loanDate = new Date(dateStr);
+  const loanDate = new Date(parseDate(dateStr));
   if (isNaN(loanDate)) {
     return {status: status, displayText: status, className: ''};
   }

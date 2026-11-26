@@ -91,56 +91,20 @@ function showToast(message, duration = 3000) {
 }
 
 /* ====== 검색 ====== */
+// 입력창에 한 번만 바인딩. 검색어는 테이블 상태(query)에 저장되어
+// 필터/정렬/페이지 이동과 독립적으로 유지된다.
 function addSearch(inputId, tableId) {
   const input = document.getElementById(inputId);
-  
-  // 기존 이벤트 리스너 제거 (중복 방지)
-  const newInput = input.cloneNode(true);
-  input.parentNode.replaceChild(newInput, input);
-  
+  if (!input || input.dataset.searchBound) return;
+  input.dataset.searchBound = '1';
+
   let timer;
-  newInput.addEventListener('input', e => {
+  input.addEventListener('input', e => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const q = e.target.value.trim().toLowerCase();
-      
-      // 원본 데이터 가져오기 (검색 전 상태)
-      let sourceData;
-      if (tableId === 'libraryTable') {
-        sourceData = window.originalLibraryData || window.allTableData[tableId];
-      } else {
-        sourceData = window.booksData || window.allTableData[tableId];
-      }
-      
-      if (!q) {
-        // 검색어가 없으면 원본 데이터로 복원
-        window.currentPage[tableId] = 1;
-        window.renderTable(sourceData, tableId, tableId === 'libraryTable');
-      } else {
-        // 검색 수행
-        const filtered = [sourceData[0]]; // 헤더 포함
-        
-        for (let i = 1; i < sourceData.length; i++) {
-          const row = sourceData[i];
-          const rowText = row.join(' ').toLowerCase();
-          if (rowText.includes(q)) {
-            filtered.push(row);
-          }
-        }
-        
-        // 검색 결과 렌더링 (원본 데이터는 유지)
-        window.currentPage[tableId] = 1;
-        const tempData = window.allTableData[tableId]; // 백업
-        window.allTableData[tableId] = filtered;
-        window.renderTableWithPagination(filtered, tableId, tableId === 'libraryTable');
-        
-        // 페이지네이션 업데이트
-        const paginationId = tableId === 'loanTable' ? 'loanPagination' : 'libraryPagination';
-        window.createPagination(tableId, paginationId, filtered.length - 1);
-        
-        // 원본 데이터 복원 (다음 검색을 위해)
-        window.allTableData[tableId] = tempData;
-      }
+      const st = window.getTableState(tableId);
+      st.query = e.target.value.trim().toLowerCase();
+      window.refreshTable(tableId); // 검색어가 바뀌면 1페이지부터
     }, 150);
   });
 }

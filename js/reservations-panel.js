@@ -100,7 +100,7 @@ window.cancelReservationUI = async function(reservationId) {
   if (result && result.success) {
     await loadAllReservations();
     // 뱃지 업데이트
-    if (typeof window.applyAllFilters === 'function') window.applyAllFilters();
+    if (typeof window.updateReservationBadges === 'function') window.updateReservationBadges();
   } else {
     alert('취소 실패: ' + (result && result.error ? result.error : '알 수 없는 오류'));
   }

@@ -91,6 +91,7 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   }
 
   originalLibraryData = [...library];
+  window.originalLibraryData = originalLibraryData;
   renderTable(library, 'libraryTable', true);
   addSearch('searchLoans', 'loanTable');
   addSearch('searchLibrary', 'libraryTable');
@@ -100,7 +101,7 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
     window.doorayIntegration.getReservations('').then(result => {
       if (result && result.success) {
         window.reservationData = result.data || [];
-        if (window.reservationData.length > 0) applyAllFilters();
+        if (window.reservationData.length > 0) window.updateReservationBadges();
         // 예약현황 버튼 뱃지 갱신
         const waitCount = window.reservationData.filter(r => r.status === '대기').length;
         const el = document.getElementById('reservationWaitCount');
@@ -111,62 +112,39 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
 });
 
 /* ====== 필터 함수 ====== */
-function applyAllFilters() {
+// 현재 보이는 테이블에 필터/최신순 상태를 반영. 검색어·정렬은 테이블 상태에 그대로 유지된다.
+// keepPage=true 이면 현재 페이지 유지 (예약 뱃지 갱신 등)
+function applyAllFilters(keepPage = false) {
   const isLoanView = !document.getElementById('loanSection').classList.contains('hidden');
   const targetTableId = isLoanView ? 'loanTable' : 'libraryTable';
-  const sourceData = isLoanView ? window.booksData : originalLibraryData;
-  
-  let dataToFilter = [...sourceData];
-  
-  // 최신 순 정렬 적용
-  if (newestOn) {
-    dataToFilter = [dataToFilter[0], ...dataToFilter.slice(1).reverse()];
-  }
-  
-  // 필터링 적용
-  const header = dataToFilter[0];
+  const st = getTableState(targetTableId);
+  const header = st.source[0] || [];
+
   const statusIdx = findColIndex(header, ['상태', '대출여부']);
   const dateIdx = findColIndex(header, ['등록일', '일자', '날짜', '입고일', '구입일', '대출일']);
-  const filteredData = [dataToFilter[0]]; // 헤더 보존
-  
-  for (let i = 1; i < dataToFilter.length; i++) {
-    const row = dataToFilter[i];
-    let shouldShow = true;
-    
-    // 대출 중 필터 적용
-    if (borrowedOn) {
-      const status = row[statusIdx] || '';
-      const statusInfo = row._statusInfo;
-      const isBorrowed = statusInfo ? 
-        (statusInfo.status === '대출' || statusInfo.status === '연체') :
-        /(대출|대여|연체)/.test(status);
-      if (!isBorrowed) shouldShow = false;
-    }
-    
-    // 30일 필터 적용
-    if (recentOn && dateIdx !== -1) {
-      const dateText = row[dateIdx] || '';
-      const bookDate = new Date(dateText);
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30*24*60*60*1000);
-      const isRecent = !isNaN(bookDate) && bookDate >= thirtyDaysAgo;
-      if (!isRecent) shouldShow = false;
-    }
-    
-    if (shouldShow) filteredData.push(row);
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+  const checks = [];
+  if (borrowedOn) {
+    checks.push(row => {
+      const info = row._statusInfo;
+      return info
+        ? (info.status === '대출' || info.status === '연체')
+        : /(대출|대여|연체)/.test(row[statusIdx] || '');
+    });
   }
-  
-  // 필터된 데이터로 테이블 재렌더링
-  currentPage[targetTableId] = 1;
-  renderTable(filteredData, targetTableId, !isLoanView);
-  
-  // 검색 기능 다시 바인딩
-  if (isLoanView) {
-    addSearch('searchLoans', 'loanTable');
-  } else {
-    addSearch('searchLibrary', 'libraryTable');
+  if (recentOn && dateIdx !== -1) {
+    checks.push(row => {
+      const t = parseDate(row[dateIdx]);
+      return !isNaN(t) && t >= thirtyDaysAgo;
+    });
   }
+
+  st.filter = checks.length ? (row => checks.every(fn => fn(row))) : null;
+  st.newest = newestOn;
+  refreshTable(targetTableId, {keepPage});
 }
+window.applyAllFilters = applyAllFilters;
 
 /* ====== 버튼 이벤트 핸들러 ====== */
 document.getElementById('btnLoans').onclick = () => {
