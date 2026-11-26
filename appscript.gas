@@ -724,19 +724,15 @@ function saveBookRequest(bookTitle, author, publisher, reason, requesterName, ma
     // 도서 담당자에게 DM 알림 (실패해도 신청 저장은 성공으로 처리)
     let notified = false;
     if (managerName) {
-      const text = '[도서 신청 알림] 새 도서 신청이 접수되었습니다.
-'
-        + '• 도서: ' + bookTitle + '
-'
-        + '• 저자: ' + (author || '-') + '
-'
-        + '• 출판사: ' + (publisher || '-') + '
-'
-        + '• 신청자: ' + requesterName + '
-'
-        + '• 사유: ' + (reason || '-') + '
-'
-        + '• 신청일시: ' + now;
+      const text = [
+        '[도서 신청 알림] 새 도서 신청이 접수되었습니다.',
+        '• 도서: ' + bookTitle,
+        '• 저자: ' + (author || '-'),
+        '• 출판사: ' + (publisher || '-'),
+        '• 신청자: ' + requesterName,
+        '• 사유: ' + (reason || '-'),
+        '• 신청일시: ' + now
+      ].join('\n');
       const dm = sendDoorayDM_(managerName, text);
       notified = dm.success;
       if (!dm.success) Logger.log('⚠️ 담당자 DM 실패: ' + dm.error);
