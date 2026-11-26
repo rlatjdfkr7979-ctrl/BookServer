@@ -1100,3 +1100,13 @@ td.wrap-cell {
     min-width: 70px !important;
   }
 }
+
+/* 대출 연장 버튼 */
+button.reserve-btn.extend-btn {
+  background: #2563eb;
+}
+
+button.reserve-btn.extend-btn:hover {
+  background: #1d4ed8;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}

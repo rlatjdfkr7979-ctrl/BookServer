@@ -364,6 +364,20 @@ function renderTableWithPagination(rows, id, withQR = false) {
           window.showReservationModal({ title: rows[i][titleIdx], bookCode, borrowerName: renter });
         };
         tdQR.appendChild(reserveBtn);
+
+        // 대출 연장 버튼: 연체가 아니고, 아직 연장하지 않았고, 예약 대기자가 없을 때만 (서버에서도 다시 검사)
+        const canExtend = statusInfo && statusInfo.status === '대출' && rows[i]._extensions === 0 && waitCount === 0;
+        if (canExtend && typeof window.showExtensionModal === 'function') {
+          const extendBtn = document.createElement('button');
+          extendBtn.className = 'reserve-btn extend-btn';
+          extendBtn.textContent = '⏩ 연장';
+          extendBtn.style.marginLeft = '4px';
+          extendBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            window.showExtensionModal({ title: rows[i][titleIdx], author: rows[i][findColIndex(header, ['지은이', '저자'])], bookCode, borrowerName: renter });
+          };
+          tdQR.appendChild(extendBtn);
+        }
       }
 
       tr.appendChild(tdQR);

@@ -122,14 +122,24 @@ async function handleBookRequestStatus(requestId, status) {
   const gasUrl = localStorage.getItem('gas_backend_url');
   if (!gasUrl) { showToast('⚠️ GAS URL이 설정되지 않았습니다.'); return; }
 
+  // 취소(반려)는 신청자에게 전달할 사유를 받는다 (비워도 됨, 취소 버튼이면 중단)
+  let reason = '';
+  if (status === '취소') {
+    const input = prompt('취소(반려) 사유를 입력하세요. 신청자에게 DM으로 전달됩니다. (선택)');
+    if (input === null) return;
+    reason = input.trim();
+  }
+
   try {
     const result = await gasJsonp(gasUrl, {
       action: 'updateBookRequestStatus',
       requestId: requestId,
-      status: status
+      status: status,
+      reason: reason
     });
     if (result && result.success) {
-      showToast(status === '완료' ? '✅ 신청이 완료 처리되었습니다.' : '❌ 신청이 취소되었습니다.');
+      const base = status === '완료' ? '✅ 신청이 완료 처리되었습니다.' : '❌ 신청이 취소되었습니다.';
+      showToast(base + (result.notified ? ' 신청자에게 DM을 보냈습니다.' : ' (신청자 DM은 발송되지 않았습니다)'), 4000);
       loadBookRequests();
     } else {
       showToast('❌ 처리 실패: ' + (result && result.error ? result.error : '알 수 없는 오류'));

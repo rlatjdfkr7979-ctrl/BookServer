@@ -52,14 +52,13 @@ function showLoadError(err) {
   });
 }
 
-Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library]) => {
-  if (!books.length || !library.length) throw new Error('CSV에 데이터가 없습니다.');
-  window.booksData = books;
-  window.libraryData = library;
-  renderTable(books, 'loanTable');
-  
-  updateDoorayButtonStatus();
-
+/* ====== 대출 상태 계산 ======
+   books.csv에서 코드별 마지막 이력을 구해 library 각 행의 대출 상태/대출자/연장 정보를 채운다.
+   '연장' 행은 대출일을 유지한 채 연장 횟수만 늘리고, 연장 1회당 대출 기간만큼 반납 기한이 늘어난다.
+   연장 직후 화면 반영(낙관적 갱신)에서도 다시 호출한다. */
+function applyLoanStatus() {
+  const books = window.booksData;
+  const library = window.libraryData;
   const bh = books[0].map(norm);
   const bDateIdx = findColIndex(bh, ['등록일', '대출일', '일자']);
   const bCodeIdx = findColIndex(bh, ['코드', '코드번호']);
@@ -73,15 +72,20 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
     const status = norm(books[i][bStatusIdx]);
     const borrower = norm(books[i][bUserIdx]);
     if (!code) continue;
-    if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: '', loanDate: ''};
+    if (!latestByCode[code]) latestByCode[code] = {status: '', borrower: '', lastReturn: '', loanDate: '', extensions: 0};
+    const rec = latestByCode[code];
     if (status.includes('반납')) {
-      latestByCode[code].lastReturn = date;
-      latestByCode[code].loanDate = '';
+      rec.lastReturn = date;
+      rec.loanDate = '';
+      rec.extensions = 0;
+    } else if (status.includes('연장') && rec.loanDate) {
+      rec.extensions++; // 대출일은 그대로 유지
     } else {
-      latestByCode[code].loanDate = date;
+      rec.loanDate = date;
+      rec.extensions = 0;
     }
-    latestByCode[code].status = status;
-    latestByCode[code].borrower = borrower;
+    rec.status = status;
+    rec.borrower = borrower || rec.borrower;
   }
 
   const lh = library[0].map(norm);
@@ -95,6 +99,9 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
   for (let i = 1; i < library.length; i++) {
     const code = norm(library[i][lCodeIdx]);
     const rec = latestByCode[code];
+    delete library[i]._statusInfo;
+    delete library[i]._loanPeriod;
+    delete library[i]._extensions;
     if (!rec) {
       library[i][lStatusIdx] = '';
       library[i][lUserIdx] = '';
@@ -108,12 +115,26 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
       const loanDate = rec.loanDate || '';
       const genre = lGenreIdx !== -1 ? (library[i][lGenreIdx] || '') : '';
       const loanPeriod = genre.includes('전공·자격증·어학') ? 90 : 30;
-      const loanStatus = calculateLoanStatus(loanDate, rec.status, loanPeriod);
+      const loanStatus = calculateLoanStatus(loanDate, rec.status, loanPeriod * (1 + rec.extensions));
+      if (rec.extensions > 0 && loanStatus.displayText) loanStatus.displayText += ' · 연장';
       library[i][lStatusIdx] = loanStatus.displayText;
       library[i]._statusInfo = loanStatus;
       library[i]._loanPeriod = loanPeriod;
+      library[i]._extensions = rec.extensions;
     }
   }
+}
+window.applyLoanStatus = applyLoanStatus;
+
+Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library]) => {
+  if (!books.length || !library.length) throw new Error('CSV에 데이터가 없습니다.');
+  window.booksData = books;
+  window.libraryData = library;
+  renderTable(books, 'loanTable');
+  
+  updateDoorayButtonStatus();
+
+  applyLoanStatus();
 
   originalLibraryData = [...library];
   window.originalLibraryData = originalLibraryData;

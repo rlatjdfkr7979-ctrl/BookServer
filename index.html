@@ -32,6 +32,7 @@
     <button id="btnAddBook" style="background:#059669;">➕ 도서 추가</button>
     <button id="btnBookRequest" style="background:#d97706;">📝 도서 신청</button>
     <button id="btnReservations" style="background:#0891b2;" onclick="openReservationsPanel()">📋 예약 현황 <span id="reservationWaitCount" style="font-size:11px;background:#fff;color:#0891b2;border-radius:10px;padding:1px 6px;margin-left:4px;"></span></button>
+    <button id="btnStats" style="background:#0f766e;" onclick="openStatsPanel()">📊 통계</button>
     <button id="btnDooraySync" style="background:#7c3aed;">🔄 Dooray 연동</button>
   </div>
 </nav>
@@ -239,13 +240,45 @@
     <input type="text" id="reserverNameInput" placeholder="이름을 입력하세요"
            style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:4px; box-sizing:border-box; font-size:1rem;" />
     <p style="font-size:0.85rem; color:#6b7280; margin:0.5rem 0 1.5rem 0;">
-      대출자에게 반납 요청 메시지가 Dooray DM으로 발송됩니다.
+      대출자에게 반납 요청 메시지가 Dooray DM으로 발송됩니다.<br>
+      도서가 반납되면 예약 순서대로 첫 번째 예약자에게 대출 가능 안내 DM이 발송됩니다.
     </p>
     <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
       <button id="cancelReserveBtn" style="padding:0.5rem 1.2rem; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:4px; cursor:pointer;">취소</button>
       <button id="confirmReserveBtn" style="padding:0.5rem 1.2rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:500;">예약 및 메시지 발송</button>
     </div>
   </div>
+</div>
+
+<!-- 대출 연장 모달 -->
+<div id="extensionModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; padding:2rem; border-radius:8px; min-width:320px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+    <h3 style="margin:0 0 1rem 0;">⏩ 대출 연장</h3>
+    <p style="margin:0 0 1rem 0; color:#374151;"><strong id="extensionBookTitle"></strong></p>
+    <label style="display:block; margin-bottom:0.5rem; font-weight:500;">대출자 이름 (본인 확인)</label>
+    <input type="text" id="extensionNameInput" placeholder="이름을 입력하세요"
+           style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:4px; box-sizing:border-box; font-size:1rem;" />
+    <p style="font-size:0.85rem; color:#6b7280; margin:0.5rem 0 1.5rem 0;">
+      연장은 1회만 가능하며 대출 기간(기본 30일, 전공·자격증·어학 90일)만큼 반납일이 늘어납니다.<br>
+      연체 중이거나 예약 대기자가 있으면 연장할 수 없습니다.
+    </p>
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+      <button id="cancelExtensionBtn" style="padding:0.5rem 1.2rem; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:4px; cursor:pointer;">취소</button>
+      <button id="confirmExtensionBtn" style="padding:0.5rem 1.2rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:500;">대출 연장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 통계 패널 오버레이 -->
+<div id="statsPanelOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:900;" onclick="closeStatsPanel()"></div>
+
+<!-- 통계 패널 -->
+<div id="statsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:94%;max-width:920px;max-height:88vh;background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.25);z-index:950;flex-direction:column;">
+  <div style="padding:1.2rem 1.5rem 0.8rem;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;font-size:1.1rem;">📊 도서 이용 통계</h3>
+    <button onclick="closeStatsPanel()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280;line-height:1;">×</button>
+  </div>
+  <div id="statsBody" style="overflow-y:auto;flex:1;padding:1rem 1.5rem 1.5rem;"></div>
 </div>
 
 <footer>© 울산도시공사 도서관리 시스템 | 시스템 문의(김성락 대리 417)</footer>
@@ -263,6 +296,8 @@
 <script src="js/reservations-panel.js"></script>
 <script src="js/book-request.js"></script>
 <script src="js/book-requests-panel.js"></script>
+<script src="js/extension.js"></script>
+<script src="js/stats.js"></script>
 <script src="js/reviews.js"></script>
 <script src="js/main.js"></script>
 
