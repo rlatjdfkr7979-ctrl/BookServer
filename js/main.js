@@ -28,7 +28,32 @@ function updateDoorayButtonStatus() {
 }
 
 /* ====== 메인 초기화 ====== */
+function showLoadError(err) {
+  console.error('데이터 로드 실패:', err);
+  ['libraryTable', 'loanTable'].forEach(id => {
+    const table = document.getElementById(id);
+    const wrap = table && table.parentNode;
+    if (!wrap) return;
+    let box = wrap.parentNode.querySelector(`.load-error[data-for="${id}"]`);
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'load-error';
+      box.dataset.for = id;
+      box.style.cssText = 'margin:12px 0;padding:14px 16px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:14px;';
+      wrap.parentNode.insertBefore(box, wrap);
+    }
+    box.innerHTML = '';
+    const msg = document.createElement('span');
+    msg.textContent = '⚠ 데이터를 불러오지 못했습니다: ' + (err && err.message ? err.message : err) + ' ';
+    const btn = document.createElement('button');
+    btn.textContent = '🔄 다시 시도';
+    btn.onclick = () => location.reload();
+    box.append(msg, btn);
+  });
+}
+
 Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, library]) => {
+  if (!books.length || !library.length) throw new Error('CSV에 데이터가 없습니다.');
   window.booksData = books;
   window.libraryData = library;
   renderTable(books, 'loanTable');
@@ -109,7 +134,7 @@ Promise.all([loadCSV('books.csv'), loadCSV('library.csv')]).then(([books, librar
       }
     }).catch(() => {});
   }
-});
+}).catch(showLoadError);
 
 /* ====== 필터 함수 ====== */
 // 현재 보이는 테이블에 필터/최신순 상태를 반영. 검색어·정렬은 테이블 상태에 그대로 유지된다.
@@ -281,13 +306,13 @@ async function testDoorayConnection() {
   
   if (result.success) {
     resultDiv.innerHTML = `<div style="background:#d1fae5;color:#047857;padding:12px;border-radius:6px;">
-      ✅ ${result.message}<br>
-      <small>Wiki ID: ${result.data?.wikiId || 'N/A'}<br>
-      페이지 제목: ${result.data?.pageTitle || 'N/A'}</small>
+      ✅ ${escapeHtml(result.message)}<br>
+      <small>Wiki ID: ${escapeHtml(result.data?.wikiId || 'N/A')}<br>
+      페이지 제목: ${escapeHtml(result.data?.pageTitle || 'N/A')}</small>
     </div>`;
   } else {
     resultDiv.innerHTML = `<div style="background:#fee2e2;color:#dc2626;padding:12px;border-radius:6px;">
-      ❌ ${result.message}
+      ❌ ${escapeHtml(result.message)}
     </div>`;
   }
 }
@@ -411,7 +436,5 @@ async function saveDoorayConfig() {
   
   showToast('✅ 설정이 저장되었습니다!');
   
-  setTimeout(async () => {
-    const result = await testDoorayConnection();
-  }, 500);
+  setTimeout(() => testDoorayConnection(), 500);
 }

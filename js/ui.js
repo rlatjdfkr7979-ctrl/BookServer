@@ -6,9 +6,10 @@
 function generateQR({code}) {
   // book.py와 동일한 방식: Apps Script가 시트에서 정보 조회 후 폼으로 리다이렉트
   const url = `${APPS_SCRIPT_URL}?code=${encodeURIComponent(code)}`;
+  const safeCode = escapeHtml(code), safeUrl = escapeHtml(url);
   const layer = document.createElement('div');
   layer.style = `position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1002;`;
-  layer.innerHTML = `<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,.25)"><h3 style="margin:6px 0 12px">📷 QR 코드 (${code})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${url}" target="_blank">${url}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
+  layer.innerHTML = `<div style="background:#fff;padding:18px 22px;border-radius:10px;text-align:center;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,.25)"><h3 style="margin:6px 0 12px">📷 QR 코드 (${safeCode})</h3><div id="qrbox" style="margin:0 auto 10px;width:220px;height:220px"></div><p style="word-break:break-all;font-size:12px;"><a href="${safeUrl}" target="_blank" rel="noopener">${safeUrl}</a></p><div style="margin-top:10px"><button id="qrClose" style="background:#475569;color:#fff;border:none;border-radius:6px;padding:6px 10px;margin-right:6px">닫기</button><button id="qrDown"  style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px">QR 다운로드</button></div></div>`;
   document.body.appendChild(layer);
   new QRCode(layer.querySelector('#qrbox'), {text: url, width: 220, height: 220, colorDark: "#000", colorLight: "#fff", correctLevel: QRCode.CorrectLevel.H});
   
@@ -185,19 +186,53 @@ async function showBookPreview(code, title, author = '') {
   modal.querySelector('.inner').onclick = (e) => e.stopPropagation();
 }
 
-async function fetchGoogleBooks(query) {
+// Google Books 검색: API 키는 GAS 서버(스크립트 속성)에만 보관하고 JSONP로 프록시 호출.
+// GAS에 searchBooks가 아직 배포되지 않았거나 실패하면 키 없이 직접 호출(낮은 쿼터)로 폴백.
+function fetchGoogleBooksViaGas(query) {
+  return new Promise((resolve, reject) => {
+    const gasUrl = localStorage.getItem('gas_backend_url') || '';
+    if (!gasUrl) return reject(new Error('GAS URL 없음'));
+
+    const cbName = 'jsonp_books_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const script = document.createElement('script');
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+    };
+    window[cbName] = (data) => {
+      cleanup();
+      if (data && data.success) resolve(data.items && data.items.length ? data.items : null);
+      else reject(new Error((data && data.error) || 'searchBooks 실패'));
+    };
+    script.onerror = () => { cleanup(); reject(new Error('GAS 연결 실패')); };
+    timer = setTimeout(() => { cleanup(); reject(new Error('GAS 응답 시간 초과')); }, 8000);
+    script.src = gasUrl + '?' + new URLSearchParams({action: 'searchBooks', q: query, callback: cbName});
+    document.head.appendChild(script);
+  });
+}
+
+async function fetchGoogleBooksDirect(query) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko&key=AIzaSyDOUbZEcW86ccHRJM64VJvch_oZXYhfm9o`;
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko`;
     const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     return data.items && data.items.length > 0 ? data.items : null;
-  } catch (err) {
+  } finally {
     clearTimeout(timeoutId);
-    throw err;
+  }
+}
+
+async function fetchGoogleBooks(query) {
+  try {
+    return await fetchGoogleBooksViaGas(query);
+  } catch (err) {
+    console.warn('GAS 프록시 실패, 직접 호출로 폴백:', err.message);
+    return fetchGoogleBooksDirect(query);
   }
 }
 
@@ -233,22 +268,23 @@ function calculateSimilarity(str1, str2) {
 
 function renderBookInfo(bookData, container) {
   const info = bookData.volumeInfo;
-  const title = info.title || '제목 없음';
-  const authors = info.authors ? info.authors.join(', ') : '저자 미상';
-  const publisher = info.publisher || '출판사 미상';
-  const publishedDate = info.publishedDate || '출간일 미상';
-  const description = info.description || '설명이 없습니다.';
-  const thumbnail = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
-  const pageCount = info.pageCount || '-';
-  const categories = info.categories ? info.categories.join(', ') : '-';
-  const language = info.language === 'ko' ? '한국어' : info.language || '-';
-  const rating = info.averageRating || 0;
-  const ratingsCount = info.ratingsCount || 0;
+  const title = escapeHtml(info.title || '제목 없음');
+  const authors = escapeHtml(info.authors ? info.authors.join(', ') : '저자 미상');
+  const publisher = escapeHtml(info.publisher || '출판사 미상');
+  const publishedDate = escapeHtml(info.publishedDate || '출간일 미상');
+  const rawDesc = String(info.description || '설명이 없습니다.');
+  const description = escapeHtml(rawDesc.length > 500 ? rawDesc.substring(0, 500) + '...' : rawDesc);
+  const thumbnail = escapeHtml((info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '').replace('http:', 'https:'));
+  const pageCount = escapeHtml(info.pageCount || '-');
+  const categories = escapeHtml(info.categories ? info.categories.join(', ') : '-');
+  const language = escapeHtml(info.language === 'ko' ? '한국어' : info.language || '-');
+  const rating = Number(info.averageRating) || 0;
+  const ratingsCount = Number(info.ratingsCount) || 0;
   
   container.innerHTML = `
     <div class="book-header">
       <div class="book-cover">
-        ${thumbnail ? `<img src="${thumbnail.replace('http:', 'https:')}" alt="책 표지">` : '<div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>'}
+        ${thumbnail ? `<img src="${thumbnail}" alt="책 표지">` : '<div style="width:120px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">표지 없음</div>'}
       </div>
       <div class="book-info">
         <h2 class="book-title">${title}</h2>
@@ -270,12 +306,13 @@ function renderBookInfo(bookData, container) {
     </div>
     <div class="book-description">
       <strong>📝 도서 소개</strong><br><br>
-      ${description.length > 500 ? description.substring(0, 500) + '...' : description}
+      ${description}
     </div>
   `;
 }
 
 function renderBasicBookInfo(title, author, code, container, notice = '') {
+  title = escapeHtml(title); author = escapeHtml(author); code = escapeHtml(code); notice = escapeHtml(notice);
   container.innerHTML = `
     <div class="book-header">
       <div class="book-cover">
@@ -296,8 +333,15 @@ function renderBasicBookInfo(title, author, code, container, notice = '') {
 }
 
 function renderBookHistory(code, title, container) {
-  const recs = window.booksData.filter(r => window.norm(r[1]) === code);
-  
+  // 열 위치를 헤더 이름으로 찾음 (CSV 열 순서가 바뀌어도 동작)
+  const data = window.booksData || [];
+  const header = (data[0] || []).map(window.norm);
+  const dateIdx = window.findColIndex(header, ['등록일', '대출일', '일자']);
+  const codeIdx = window.findColIndex(header, ['코드', '코드번호']);
+  const userIdx = window.findColIndex(header, ['대여자', '대출자']);
+  const statusIdx = window.findColIndex(header, ['상태', '대출여부']);
+  const recs = codeIdx === -1 ? [] : data.slice(1).filter(r => window.norm(r[codeIdx]) === code);
+
   if (recs.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">대출 이력이 없습니다.</div>';
   } else {
@@ -310,19 +354,20 @@ function renderBookHistory(code, title, container) {
           <th style="padding:12px;border:1px solid #e2e8f0;text-align:left;font-weight:600;">상태</th>
         </tr>
         ${recs.map(r => {
-          const loanStatus = window.calculateLoanStatus(r[0], r[5]);
-          const displayStatus = loanStatus.displayText || r[5];
+          const date = r[dateIdx] || '', user = r[userIdx] || '', status = r[statusIdx] || '';
+          const loanStatus = window.calculateLoanStatus(date, status);
+          const displayStatus = loanStatus.displayText || status;
           const bgColor = loanStatus.status === '연체' ? 'background:#fee2e2;color:#dc2626;' :
                          loanStatus.status === '대출' ? 'background:#fef3c7;color:#92400e;' :
                          'background:#d1fae5;color:#047857;';
-          
+
           return `
             <tr>
-              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[0]}</td>
-              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${r[4]}</td>
+              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${escapeHtml(date)}</td>
+              <td style="padding:10px 12px;border:1px solid #e2e8f0;">${escapeHtml(user)}</td>
               <td style="padding:10px 12px;border:1px solid #e2e8f0;">
                 <span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;${bgColor}">
-                  ${displayStatus}
+                  ${escapeHtml(displayStatus)}
                 </span>
               </td>
             </tr>
@@ -367,11 +412,16 @@ function showHistory(code, title) {
   const histTitle = document.getElementById('histTitle');
   const histContent = document.getElementById('histContent');
   histTitle.textContent = `📖 ${title} (${code})`;
-  const recs = window.booksData.filter(r => window.norm(r[1]) === code);
+  const hdr = (window.booksData[0] || []).map(window.norm);
+  const ci = window.findColIndex(hdr, ['코드', '코드번호']);
+  const di = window.findColIndex(hdr, ['등록일', '대출일', '일자']);
+  const ui = window.findColIndex(hdr, ['대여자', '대출자']);
+  const si = window.findColIndex(hdr, ['상태', '대출여부']);
+  const recs = ci === -1 ? [] : window.booksData.slice(1).filter(r => window.norm(r[ci]) === code);
   if (recs.length === 0) {
     histContent.innerHTML = '<p>이력 없음</p>';
   } else {
-    histContent.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th>등록일</th><th>대여자</th><th>상태</th></tr>' + recs.map(r => `<tr><td>${r[0]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`).join('') + '</table>';
+    histContent.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th>등록일</th><th>대여자</th><th>상태</th></tr>' + recs.map(r => `<tr><td>${escapeHtml(r[di])}</td><td>${escapeHtml(r[ui])}</td><td>${escapeHtml(r[si])}</td></tr>`).join('') + '</table>';
   }
   modal.style.display = 'flex';
   

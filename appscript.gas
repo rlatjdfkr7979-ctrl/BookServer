@@ -1,1 +1,846 @@
+// =============================================================
+// 🔑 비밀값은 코드에 두지 않고 스크립트 속성에서 읽음
+//    프로젝트 설정 > 스크립트 속성: GITHUB_TOKEN, GOOGLE_BOOKS_API_KEY, DOORAY_TOKEN
+// =============================================================
+function getGithubToken_() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) throw new Error('스크립트 속성에 GITHUB_TOKEN이 설정되지 않았습니다.');
+  return token;
+}
 
+// =============================================================
+// ✅ 폼 응답 진입점
+// =============================================================
+function onFormSubmit(e) {
+  const sheet = e.source.getActiveSheet();
+  const name = sheet.getName();
+
+  // 📗 도서추가 폼 응답 시
+  if (name === '도서추가') {
+    handleBookAddAndGitHub(e);
+    return;
+  }
+
+  // 📘 도서 대여 기록 폼 응답 시
+  if (name === '도서 대여 기록') {
+    updateGitHubCSV(e);
+
+    // 반납 시 예약자에게 DM 알림
+    const row = e.values;
+    const [, code, borrower, status, title] = row;
+    if (status && status.includes('반납') && code) {
+      notifyReserversOnReturn(code, title);
+    }
+    return;
+  }
+
+  Logger.log(`⚠️ 다른 시트(${name}) 응답은 무시됨`);
+}
+
+// =============================================================
+// ✅ 도서추가 폼 → 도서목록 시트 + GitHub library.csv
+// =============================================================
+function handleBookAddAndGitHub(e) {
+  const lock = LockService.getScriptLock();
+  
+  try {
+    // 최대 30초 동안 Lock 획득 대기
+    lock.waitLock(30000);
+    Logger.log('🔒 Lock 획득 성공 (도서추가)');
+    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const src = ss.getSheetByName('도서추가');
+    const dst = ss.getSheetByName('도서목록');
+
+    // 🔹 1. 응답 데이터 읽기
+    const last = src.getLastRow();
+    const row = src.getRange(last, 1, 1, src.getLastColumn()).getValues()[0];
+    
+    // 🔹 1-1. 한국어 타임스탬프를 한국 시간으로 변환 (CSV와 동일한 로직)
+    function parseKoreanDateTime(koreanTime) {
+      const timeStr = koreanTime.toString();
+      Logger.log('🔍 원본 시간 (UTC): ' + timeStr);
+      
+      // 한국어 형식 파싱
+      const match = timeStr.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\s+(오전|오후)\s+(\d{1,2}):(\d{2}):(\d{2})/);
+      
+      if (!match) {
+        Logger.log('⚠️ 시간 형식 매칭 실패, 현재 한국 시간 사용');
+        return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+      
+      const [, year, month, day, ampm, hour, minute, second] = match;
+      
+      // 24시간 형식으로 변환
+      let hour24 = parseInt(hour);
+      if (ampm === '오후' && hour24 !== 12) {
+        hour24 += 12;
+      } else if (ampm === '오전' && hour24 === 12) {
+        hour24 = 0;
+      }
+      
+      // UTC에서 실제 한국 시간으로 변환 (+16시간)
+      let kstHour = hour24 + 16;
+      let kstDay = parseInt(day);
+      let kstMonth = parseInt(month);
+      let kstYear = parseInt(year);
+      
+      // 24시간 초과 시 다음 날로
+      if (kstHour >= 24) {
+        kstHour -= 24;
+        kstDay += 1;
+        
+        // 월별 마지막 날 계산
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        // 윤년 체크
+        if (kstYear % 4 === 0 && (kstYear % 100 !== 0 || kstYear % 400 === 0)) {
+          daysInMonth[1] = 29;
+        }
+        
+        // 월 마지막 날 초과 시 다음 달로
+        if (kstDay > daysInMonth[kstMonth - 1]) {
+          kstDay = 1;
+          kstMonth += 1;
+          
+          // 12월 초과 시 다음 해로
+          if (kstMonth > 12) {
+            kstMonth = 1;
+            kstYear += 1;
+          }
+        }
+      }
+      
+      // 한국 시간으로 포맷팅
+      const paddedMonth = kstMonth.toString().padStart(2, '0');
+      const paddedDay = kstDay.toString().padStart(2, '0');
+      const paddedHour = kstHour.toString().padStart(2, '0');
+      const result = `${kstYear}-${paddedMonth}-${paddedDay} ${paddedHour}:${minute}:${second}`;
+      
+      Logger.log('🔍 변환된 한국 시간 (+16): ' + result);
+      return result;
+    }
+    
+    const tsKST = parseKoreanDateTime(row[0]);
+    const input = row.slice(1); // 타임스탬프 제외
+
+    // 🔹 2. 시트 입력값 매핑 (변환된 시간 포함)
+    const A = input[0] || '';
+    const B = input[1] || '';
+    const C = input[2] || '';
+    const D = input[3] || '';
+    const G = input[4] || '';
+
+    // 변환된 한국 시간을 포함한 레코드 생성
+    const record = [A, B, C, D, '', '', G]; // GitHub용
+    const sheetRecord = [String(A), B, C, D, '', '', G]; // 시트용
+
+    // 🔹 3. 도서목록에 추가 (변환된 시간 포함)
+    dst.appendRow(sheetRecord);
+
+    // 🔹 4. E,F 수식 복사
+    const newRow = dst.getLastRow();
+    const prevRow = newRow - 1;
+    const eR1 = dst.getRange(prevRow, 5).getFormulaR1C1();
+    const fR1 = dst.getRange(prevRow, 6).getFormulaR1C1();
+    if (eR1) dst.getRange(newRow, 5).setFormulaR1C1(eR1);
+    if (fR1) dst.getRange(newRow, 6).setFormulaR1C1(fR1);
+
+    Logger.log(`📗 도서목록 행 ${newRow} 추가 완료 (${tsKST})`);
+
+    // 🔹 5. GitHub library.csv 업데이트
+    updateLibraryCSVOnGitHub(record);
+    
+  } catch (err) {
+    Logger.log('🚨 도서추가 처리 실패: ' + err);
+  } finally {
+    lock.releaseLock();
+    Logger.log('🔓 Lock 해제 (도서추가)');
+  }
+}
+
+// =============================================================
+// ✅ library.csv 업데이트
+// =============================================================
+function updateLibraryCSVOnGitHub(record) {
+  const token = getGithubToken_();
+  const repo = 'rlatjdfkr7979-ctrl/BookServer';
+  const path = 'library.csv';
+  const branch = 'main';
+  const getUrl = `https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`;
+
+  try {
+    // ① 기존 CSV 불러오기
+    const getRes = UrlFetchApp.fetch(getUrl, {
+      headers: { Authorization: 'token ' + token }
+    });
+    const getJson = JSON.parse(getRes.getContentText());
+    const sha = getJson.sha;
+
+    // ② 기존 CSV 디코딩 + 줄바꿈 통일
+    let oldCsv = Utilities.newBlob(
+      Utilities.base64Decode(getJson.content)
+    ).getDataAsString('UTF-8');
+    oldCsv = oldCsv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // ③ record → 새 행 구성
+    const [code, title, author, publisher, , , genre] = record;
+    const newLineArr = [
+      code, title, author, publisher,
+      '', '', genre, '', ''
+    ];
+    const newLine = newLineArr.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+
+    // ④ 개행 처리 후 행 추가
+    const cleanOldCsv = oldCsv.replace(/\n+$/, '');
+    const newCsv = cleanOldCsv + '\n' + newLine + '\n';
+
+    // ⑤ base64 인코딩
+    const encoded = Utilities.base64Encode(
+      Utilities.newBlob(newCsv).getBytes()
+    );
+
+    const payload = {
+      message: 'Append new book record to library.csv',
+      content: encoded,
+      sha: sha,
+      branch: branch
+    };
+
+    const putRes = UrlFetchApp.fetch(getUrl, {
+      method: 'put',
+      headers: {
+        Authorization: 'token ' + token,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload)
+    });
+
+    Logger.log('✅ library.csv 업데이트 완료: ' + putRes.getResponseCode());
+  } catch (err) {
+    Logger.log('🚨 library.csv 업데이트 실패: ' + err);
+  }
+}
+
+// =============================================================
+// ✅ 도서 대여 기록 → books.csv 업데이트
+// =============================================================
+function updateGitHubCSV(e) {
+  const lock = LockService.getScriptLock();
+  
+  try {
+    // 최대 30초 동안 Lock 획득 대기
+    lock.waitLock(30000);
+    Logger.log('🔒 Lock 획득 성공 (대여기록)');
+    
+    const token = getGithubToken_();
+    const repo = 'rlatjdfkr7979-ctrl/BookServer';
+    const path = 'books.csv';
+    const branch = 'main';
+    const getUrl = `https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`;
+
+    // 🔹 1. 폼 응답값 읽기
+    const row = e.values;
+    const [timestamp, code, borrower, status, title, author] = row;
+
+    // 🔹 1-1. UTC 한국어 타임스탬프를 한국 시간으로 변환
+    function parseKoreanDateTime(koreanTime) {
+      const timeStr = koreanTime.toString();
+      Logger.log('🔍 원본 시간 (UTC): ' + timeStr);
+      
+      const match = timeStr.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\s+(오전|오후)\s+(\d{1,2}):(\d{2}):(\d{2})/);
+      
+      if (!match) {
+        Logger.log('⚠️ 시간 형식 매칭 실패, 현재 한국 시간 사용');
+        return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+      
+      const [, year, month, day, ampm, hour, minute, second] = match;
+      
+      let hour24 = parseInt(hour);
+      if (ampm === '오후' && hour24 !== 12) {
+        hour24 += 12;
+      } else if (ampm === '오전' && hour24 === 12) {
+        hour24 = 0;
+      }
+      
+      let kstHour = hour24 + 16;
+      let kstDay = parseInt(day);
+      let kstMonth = parseInt(month);
+      let kstYear = parseInt(year);
+      
+      if (kstHour >= 24) {
+        kstHour -= 24;
+        kstDay += 1;
+        
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (kstYear % 4 === 0 && (kstYear % 100 !== 0 || kstYear % 400 === 0)) {
+          daysInMonth[1] = 29;
+        }
+        
+        if (kstDay > daysInMonth[kstMonth - 1]) {
+          kstDay = 1;
+          kstMonth += 1;
+          
+          if (kstMonth > 12) {
+            kstMonth = 1;
+            kstYear += 1;
+          }
+        }
+      }
+      
+      const paddedMonth = kstMonth.toString().padStart(2, '0');
+      const paddedDay = kstDay.toString().padStart(2, '0');
+      const paddedHour = kstHour.toString().padStart(2, '0');
+      const result = `${kstYear}-${paddedMonth}-${paddedDay} ${paddedHour}:${minute}:${second}`;
+      
+      Logger.log('🔍 변환된 한국 시간 (UTC+9): ' + result);
+      return result;
+    }
+    
+    const tsKST = parseKoreanDateTime(timestamp);
+
+    // 🔹 2. CSV 구조에 맞춰 재배열
+    const newLineArr = [
+      tsKST || '',
+      code || '',
+      title || '',
+      author || '',
+      borrower || '',
+      status || ''
+    ];
+    const newCsvLine = newLineArr.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+
+    // 🔹 3. 기존 CSV 가져오기
+    const getRes = UrlFetchApp.fetch(getUrl, {
+      headers: { Authorization: 'token ' + token }
+    });
+    const getJson = JSON.parse(getRes.getContentText());
+    const sha = getJson.sha;
+    let oldCsv = Utilities.newBlob(Utilities.base64Decode(getJson.content)).getDataAsString('UTF-8');
+
+    // 🔹 4. 개행 처리 후 행 추가
+    const newline = oldCsv.includes('\r\n') ? '\r\n' : '\n';
+    const cleanOldCsv = oldCsv.replace(/(\r\n|\n|\r)+$/, '');
+    const newCsv = cleanOldCsv + newline + newCsvLine;
+
+    // 🔹 5. 인코딩 및 업로드
+    const encoded = Utilities.base64Encode(
+      Utilities.newBlob(newCsv, 'text/csv', 'books.csv').getBytes()
+    );
+
+    const payload = {
+      message: 'Append new loan record to books.csv',
+      content: encoded,
+      sha: sha,
+      branch: branch
+    };
+
+    const putRes = UrlFetchApp.fetch(getUrl, {
+      method: 'put',
+      headers: {
+        Authorization: 'token ' + token,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload)
+    });
+
+    Logger.log('✅ books.csv 업데이트 완료: ' + putRes.getResponseCode());
+
+  } catch (err) {
+    Logger.log('🚨 books.csv 업데이트 실패: ' + err);
+  } finally {
+    lock.releaseLock();
+    Logger.log('🔓 Lock 해제 (대여기록)');
+  }
+}
+
+// =============================================================
+// ✅ 웹 앱 GET 엔드포인트 (JSONP 방식 - 예약 DM 발송용)
+// =============================================================
+function doGet(e) {
+  const params = e.parameter;
+  const action = params.action;
+  // JSONP 콜백 이름은 영문/숫자/_/./$ 만 허용 (스크립트 주입 방지)
+  const callback = /^[A-Za-z0-9_.$]+$/.test(params.callback || '') ? params.callback : '';
+
+  let result;
+
+  try {
+    if (action === 'sendReservationDM') {
+      result = sendReservationDM(params.borrowerName, params.bookTitle, params.reserverName);
+    } else if (action === 'saveReservation') {
+      result = saveReservationToSheet(params.bookCode, params.bookTitle, params.borrowerName, params.reserverName);
+    } else if (action === 'getReservations') {
+      result = getReservationsByCode(params.bookCode || '');
+    } else if (action === 'cancelReservation') {
+      result = cancelReservationById(params.reservationId);
+    } else if (action === 'saveBookRequest') {
+      result = saveBookRequest(params.bookTitle, params.author, params.publisher, params.reason, params.requesterName);
+    } else if (action === 'getBookRequests') {
+      result = getBookRequests();
+    } else if (action === 'updateBookRequestStatus') {
+      result = updateBookRequestStatus(params.requestId, params.status);
+    } else if (action === 'saveReview') {
+      result = saveReview(params.bookCode, params.bookTitle, params.reviewerName, params.rating, params.reviewText);
+    } else if (action === 'getReviews') {
+      result = getReviews(params.bookCode || '');
+    } else if (action === 'searchBooks') {
+      result = searchBooks(params.q);
+    } else {
+      result = { success: false, error: '알 수 없는 action: ' + action };
+    }
+  } catch (err) {
+    Logger.log('🚨 doGet 오류: ' + err);
+    result = { success: false, error: err.toString() };
+  }
+
+  const json = JSON.stringify(result);
+  const output = callback ? callback + '(' + json + ')' : json;
+
+  return ContentService
+    .createTextOutput(output)
+    .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
+}
+
+// =============================================================
+// ✅ 웹 앱 POST 엔드포인트 (예약 DM 발송용)
+// =============================================================
+function doPost(e) {
+  try {
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+
+    if (action === 'sendReservationDM') {
+      const result = sendReservationDM(params.borrowerName, params.bookTitle, params.reserverName);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: '알 수 없는 action: ' + action }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    Logger.log('🚨 doPost 오류: ' + err);
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// =============================================================
+// ✅ Dooray DM 발송 (대출자에게 반납 요청)
+//    - 260303_챗봇_ver2.0.py의 Dooray API 로직 참고
+//    - GAS 스크립트 속성에 DOORAY_TOKEN 저장 필요
+// =============================================================
+function sendReservationDM(borrowerName, bookTitle, reserverName) {
+  const DOORAY_TOKEN = PropertiesService.getScriptProperties().getProperty('DOORAY_TOKEN');
+  const BASE_URL = 'https://api.gov-dooray.com';
+
+  if (!DOORAY_TOKEN) {
+    Logger.log('🚨 DOORAY_TOKEN이 스크립트 속성에 설정되지 않음');
+    return { success: false, error: 'DOORAY_TOKEN이 설정되지 않았습니다.' };
+  }
+
+  try {
+    // 1. 대출자 이름으로 Dooray 멤버 ID 조회
+    const memberUrl = BASE_URL + '/common/v1/members?name=' + encodeURIComponent(borrowerName);
+    const memberRes = UrlFetchApp.fetch(memberUrl, {
+      headers: { 'Authorization': DOORAY_TOKEN },
+      muteHttpExceptions: true
+    });
+    Logger.log('📡 Dooray 응답 코드: ' + memberRes.getResponseCode());
+    Logger.log('📡 Dooray 응답 내용: ' + memberRes.getContentText().substring(0, 500));
+    const memberData = JSON.parse(memberRes.getContentText());
+    Logger.log('🔍 멤버 조회 결과: ' + JSON.stringify(memberData));
+
+    const members = memberData.result;
+    if (!members || members.length === 0) {
+      Logger.log('⚠️ 대출자 미발견: ' + borrowerName);
+      return { success: false, error: '"' + borrowerName + '" 멤버를 찾을 수 없습니다.' };
+    }
+
+    const memberId = members[0].id;
+    Logger.log('✅ 대출자 ID 확인: ' + memberId);
+
+    // 2. DM 발송
+    const message = '[도서 예약 알림] "' + bookTitle + '" 도서를 ' + reserverName + '님이 예약하셨습니다. 반납을 서둘러 주시면 감사하겠습니다. 🙏';
+    const dmUrl = BASE_URL + '/messenger/v1/channels/direct-send';
+    const dmRes = UrlFetchApp.fetch(dmUrl, {
+      method: 'post',
+      headers: {
+        'Authorization': DOORAY_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify({
+        organizationMemberId: memberId,
+        text: message
+      }),
+      muteHttpExceptions: true
+    });
+
+    const dmCode = dmRes.getResponseCode();
+    Logger.log('📨 DM 발송 응답 코드: ' + dmCode);
+
+    if (dmCode >= 200 && dmCode < 300) {
+      return { success: true };
+    } else {
+      return { success: false, error: 'DM 발송 실패 (HTTP ' + dmCode + ')' };
+    }
+
+  } catch (err) {
+    Logger.log('🚨 sendReservationDM 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 스프레드시트 가져오기 (doGet 컨텍스트 대응)
+// =============================================================
+function getSpreadsheet() {
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    // doGet 웹앱 컨텍스트에서 getActiveSpreadsheet()가 null일 때
+    // 스크립트 속성 SPREADSHEET_ID를 사용
+    const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+    if (!id) throw new Error('스프레드시트를 찾을 수 없습니다. 스크립트 속성에 SPREADSHEET_ID를 설정해주세요.');
+    ss = SpreadsheetApp.openById(id);
+  }
+  return ss;
+}
+
+// =============================================================
+// ✅ 예약목록 시트 가져오기 (없으면 생성)
+// =============================================================
+function getOrCreateReservationSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName('예약목록');
+  if (!sheet) {
+    sheet = ss.insertSheet('예약목록');
+    sheet.appendRow(['예약ID', '도서코드', '도서명', '대출자명', '예약자명', '예약일시', '상태']);
+    sheet.getRange(1, 1, 1, 7).setFontWeight('bold');
+    Logger.log('📋 예약목록 시트 신규 생성');
+  }
+  return sheet;
+}
+
+// =============================================================
+// ✅ 예약 저장
+// =============================================================
+function saveReservationToSheet(bookCode, bookTitle, borrowerName, reserverName) {
+  try {
+    const sheet = getOrCreateReservationSheet();
+    const reservationId = String(Date.now());
+    const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([reservationId, bookCode, bookTitle, borrowerName, reserverName, now, '대기']);
+    Logger.log('✅ 예약 저장 완료: ' + reservationId);
+    return { success: true, reservationId: reservationId };
+  } catch (err) {
+    Logger.log('🚨 saveReservationToSheet 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 예약 조회 (bookCode가 빈 문자열이면 전체)
+// =============================================================
+function getReservationsByCode(bookCode) {
+  try {
+    const sheet = getOrCreateReservationSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, data: [] };
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+    const result = data
+      .filter(row => row[0] !== '') // 빈 행 제외
+      .filter(row => !bookCode || row[1] === bookCode)
+      .map(row => ({
+        reservationId: String(row[0]),
+        bookCode: row[1],
+        bookTitle: row[2],
+        borrowerName: row[3],
+        reserverName: row[4],
+        reservedAt: row[5],
+        status: row[6]
+      }));
+
+    return { success: true, data: result };
+  } catch (err) {
+    Logger.log('🚨 getReservationsByCode 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 예약 취소
+// =============================================================
+function cancelReservationById(reservationId) {
+  try {
+    const sheet = getOrCreateReservationSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, error: '예약 데이터가 없습니다.' };
+
+    const idCol = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < idCol.length; i++) {
+      if (String(idCol[i][0]) === String(reservationId)) {
+        sheet.getRange(i + 2, 7).setValue('취소');
+        Logger.log('✅ 예약 취소 완료: ' + reservationId);
+        return { success: true };
+      }
+    }
+    return { success: false, error: '해당 예약ID를 찾을 수 없습니다.' };
+  } catch (err) {
+    Logger.log('🚨 cancelReservationById 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 반납 시 대기 예약자에게 DM 발송 + 상태 완료 처리
+// =============================================================
+function notifyReserversOnReturn(bookCode, bookTitle) {
+  try {
+    const sheet = getOrCreateReservationSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+    const DOORAY_TOKEN = PropertiesService.getScriptProperties().getProperty('DOORAY_TOKEN');
+    const BASE_URL = 'https://api.gov-dooray.com';
+
+    if (!DOORAY_TOKEN) {
+      Logger.log('🚨 DOORAY_TOKEN 미설정 - 예약자 알림 불가');
+      return;
+    }
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (String(row[1]) !== String(bookCode) || row[6] !== '대기') continue;
+
+      const reserverName = row[4];
+      Logger.log('📬 반납 알림 대상: ' + reserverName + ' / ' + bookTitle);
+
+      // Dooray 멤버 ID 조회
+      const memberRes = UrlFetchApp.fetch(
+        BASE_URL + '/common/v1/members?name=' + encodeURIComponent(reserverName),
+        { headers: { Authorization: DOORAY_TOKEN }, muteHttpExceptions: true }
+      );
+      const memberData = JSON.parse(memberRes.getContentText());
+      const members = memberData.result;
+      if (!members || members.length === 0) {
+        Logger.log('⚠️ 예약자 미발견: ' + reserverName);
+        continue;
+      }
+
+      const memberId = members[0].id;
+      const message = '[도서 반납 알림] "' + bookTitle + '" 도서가 반납되었습니다. 이제 대출 가능합니다! 📚';
+      UrlFetchApp.fetch(BASE_URL + '/messenger/v1/channels/direct-send', {
+        method: 'post',
+        headers: { Authorization: DOORAY_TOKEN, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ organizationMemberId: memberId, text: message }),
+        muteHttpExceptions: true
+      });
+
+      // 상태 → 완료
+      sheet.getRange(i + 2, 7).setValue('완료');
+      Logger.log('✅ 반납 알림 발송 완료: ' + reserverName);
+    }
+  } catch (err) {
+    Logger.log('🚨 notifyReserversOnReturn 오류: ' + err);
+  }
+}
+
+// =============================================================
+// ✅ 도서신청 시트 가져오기 (없으면 생성)
+// =============================================================
+function getOrCreateBookRequestSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName('도서신청');
+  if (!sheet) {
+    sheet = ss.insertSheet('도서신청');
+    sheet.appendRow(['신청ID', '신청일시', '도서제목', '저자', '출판사', '신청사유', '신청자', '상태']);
+    sheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+    Logger.log('📝 도서신청 시트 신규 생성');
+  } else if (sheet.getRange(1, 1).getValue() !== '신청ID') {
+    sheet.insertColumnBefore(1);
+    sheet.getRange(1, 1, 1, 8).setValues([['신청ID', '신청일시', '도서제목', '저자', '출판사', '신청사유', '신청자', '상태']]);
+    sheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+    Logger.log('🔧 도서신청 시트 헤더 자동 수정 완료');
+  }
+  return sheet;
+}
+
+// =============================================================
+// ✅ 도서 신청 저장
+// =============================================================
+function saveBookRequest(bookTitle, author, publisher, reason, requesterName) {
+  try {
+    if (!bookTitle || !requesterName) {
+      return { success: false, error: '도서 제목과 신청자 이름은 필수입니다.' };
+    }
+    const sheet = getOrCreateBookRequestSheet();
+    const requestId = String(Date.now());
+    const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([requestId, now, bookTitle, author || '', publisher || '', reason || '', requesterName, '대기']);
+    Logger.log('✅ 도서 신청 저장 완료: ' + bookTitle + ' / ' + requesterName);
+    return { success: true, requestId: requestId };
+  } catch (err) {
+    Logger.log('🚨 saveBookRequest 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 도서 신청 목록 조회
+// =============================================================
+function getBookRequests() {
+  try {
+    const sheet = getOrCreateBookRequestSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, data: [] };
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    const result = data
+      .filter(row => row[0] !== '')
+      .map(row => ({
+        requestId: String(row[0]),
+        requestedAt: row[1],
+        bookTitle: row[2],
+        author: row[3],
+        publisher: row[4],
+        reason: row[5],
+        requesterName: row[6],
+        status: row[7]
+      }));
+    return { success: true, data: result };
+  } catch (err) {
+    Logger.log('🚨 getBookRequests 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 도서 신청 상태 변경 (완료/취소)
+// =============================================================
+function updateBookRequestStatus(requestId, status) {
+  try {
+    const sheet = getOrCreateBookRequestSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, error: '신청 데이터가 없습니다.' };
+
+    const idCol = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < idCol.length; i++) {
+      if (String(idCol[i][0]) === String(requestId)) {
+        sheet.getRange(i + 2, 8).setValue(status);
+        Logger.log('✅ 도서 신청 상태 변경: ' + requestId + ' → ' + status);
+        return { success: true };
+      }
+    }
+    return { success: false, error: '해당 신청ID를 찾을 수 없습니다.' };
+  } catch (err) {
+    Logger.log('🚨 updateBookRequestStatus 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 도서 리뷰 시트 가져오기 (없으면 생성)
+// =============================================================
+function getOrCreateReviewSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName('도서리뷰');
+  if (!sheet) {
+    sheet = ss.insertSheet('도서리뷰');
+    sheet.appendRow(['작성일시', '도서코드', '도서명', '작성자', '별점', '리뷰내용']);
+    sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+    Logger.log('⭐ 도서리뷰 시트 신규 생성');
+  }
+  return sheet;
+}
+
+// =============================================================
+// ✅ 도서 리뷰 저장
+// =============================================================
+function saveReview(bookCode, bookTitle, reviewerName, rating, reviewText) {
+  try {
+    if (!bookCode || !reviewerName || !rating) {
+      return { success: false, error: '도서코드, 작성자, 별점은 필수입니다.' };
+    }
+    const sheet = getOrCreateReviewSheet();
+    const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([now, bookCode, bookTitle || '', reviewerName, parseInt(rating), reviewText || '']);
+    Logger.log('✅ 리뷰 저장 완료: ' + bookCode + ' / ' + reviewerName);
+    return { success: true };
+  } catch (err) {
+    Logger.log('🚨 saveReview 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ 도서 리뷰 조회 (bookCode가 빈 문자열이면 전체)
+// =============================================================
+function getReviews(bookCode) {
+  try {
+    const sheet = getOrCreateReviewSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, data: [] };
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+    const result = data
+      .filter(row => row[0] !== '')
+      .filter(row => !bookCode || String(row[1]) === String(bookCode))
+      .map(row => ({
+        writtenAt: row[0],
+        bookCode: String(row[1]),
+        bookTitle: row[2],
+        reviewerName: row[3],
+        rating: parseInt(row[4]) || 0,
+        reviewText: row[5]
+      }));
+    return { success: true, data: result };
+  } catch (err) {
+    Logger.log('🚨 getReviews 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
+// ✅ Google Books 검색 프록시 (API 키를 서버에 숨김)
+//    - 스크립트 속성 GOOGLE_BOOKS_API_KEY 필요
+//    - 같은 검색어는 6시간 캐시
+// =============================================================
+function searchBooks(query) {
+  try {
+    const q = String(query || '').trim().slice(0, 200);
+    if (!q) return { success: false, error: '검색어가 없습니다.' };
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'gb_' + Utilities.base64EncodeWebSafe(
+      Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, q)
+    );
+    const cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
+    const key = PropertiesService.getScriptProperties().getProperty('GOOGLE_BOOKS_API_KEY');
+    if (!key) return { success: false, error: 'GOOGLE_BOOKS_API_KEY가 설정되지 않았습니다.' };
+
+    const url = 'https://www.googleapis.com/books/v1/volumes'
+      + '?q=' + encodeURIComponent(q)
+      + '&maxResults=5&langRestrict=ko'
+      + '&key=' + encodeURIComponent(key);
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) {
+      return { success: false, error: 'Google Books HTTP ' + res.getResponseCode() };
+    }
+
+    const result = { success: true, items: JSON.parse(res.getContentText()).items || [] };
+    const text = JSON.stringify(result);
+    if (text.length < 90000) cache.put(cacheKey, text, 21600); // 캐시 항목 한도(100KB) 이내일 때만
+    return result;
+  } catch (err) {
+    Logger.log('🚨 searchBooks 오류: ' + err);
+    return { success: false, error: err.toString() };
+  }
+}

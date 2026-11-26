@@ -41,6 +41,14 @@ window.normHead = normHead;
 window.includesAny = includesAny;
 window.findColIndex = findColIndex;
 
+/* HTML 이스케이프: innerHTML에 외부/CSV 데이터를 넣을 때 반드시 사용 */
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
 /* ====== 날짜 파서 (YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD / "2024. 1. 5 오후 3:20" 등) ======
    브라우저마다 다른 new Date(문자열) 동작을 피하기 위해 직접 파싱. 실패 시 NaN */
 function parseDate(str) {
