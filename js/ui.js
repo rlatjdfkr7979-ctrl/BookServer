@@ -113,9 +113,9 @@ function addSearch(inputId, tableId) {
 /* ====== Google Books 캐시 (24시간) ====== */
 const BOOK_CACHE_TTL = 24 * 60 * 60 * 1000;
 
-function getBookCache(title) {
+function getBookCache(title) { // title: '제목|저자' 형태의 캐시 키
   try {
-    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    const key = 'bk2_' + encodeURIComponent(title).slice(0, 120);
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const { ts, data } = JSON.parse(raw);
@@ -126,7 +126,7 @@ function getBookCache(title) {
 
 function setBookCache(title, data) {
   try {
-    const key = 'bk_' + encodeURIComponent(title).slice(0, 80);
+    const key = 'bk2_' + encodeURIComponent(title).slice(0, 120);
     localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
   } catch {} // localStorage 가득 차면 무시
 }
@@ -146,7 +146,8 @@ async function showBookPreview(code, title, author = '') {
   previewContent.innerHTML = '<div class="loading">📚 도서 정보를 불러오는 중...</div>';
 
   // 캐시 확인 (API 호출 없이 즉시 표시)
-  const cached = getBookCache(title);
+  const cacheKey = `${title}|${author}`;
+  const cached = getBookCache(cacheKey);
   if (cached) {
     renderBookInfo(cached, previewContent);
     renderBookHistory(code, title, historyContent);
@@ -156,12 +157,10 @@ async function showBookPreview(code, title, author = '') {
   }
 
   try {
-    const items = await fetchGoogleBooks(`${title} ${author}`.trim())
-      || await fetchGoogleBooks(title);
+    const bestMatch = await findBookInGoogle(title, author);
 
-    if (items && items.length > 0) {
-      const bestMatch = findBestBookMatch(items, title);
-      setBookCache(title, bestMatch); // 성공 시 캐시 저장
+    if (bestMatch) {
+      setBookCache(cacheKey, bestMatch); // 일치하는 책을 찾은 경우에만 캐시 저장
       renderBookInfo(bestMatch, previewContent);
     } else {
       renderBasicBookInfo(title, author, code, previewContent);
@@ -217,7 +216,7 @@ async function fetchGoogleBooksDirect(query) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5&langRestrict=ko`;
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=10&langRestrict=ko`;
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
@@ -236,34 +235,102 @@ async function fetchGoogleBooks(query) {
   }
 }
 
-function findBestBookMatch(items, targetTitle) {
-  let bestMatch = items[0];
-  let bestScore = 0;
-  
-  for (const item of items) {
-    const bookTitle = item.volumeInfo.title || '';
-    const score = calculateSimilarity(targetTitle.toLowerCase(), bookTitle.toLowerCase());
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = item;
-    }
-  }
-  
-  return bestMatch;
+/* ====== 도서 매칭 ======
+   제목/저자 조건으로 검색하고, 제목 유사도 + 저자 일치로 점수를 매겨
+   기준 미만이면 "못 찾음"(null)으로 처리한다. (엉뚱한 책을 보여주지 않음) */
+const BOOK_MATCH_MIN_TITLE = 0.5;  // 제목 유사도 최소값
+const BOOK_MATCH_MIN_TOTAL = 0.55; // 종합 점수 최소값
+
+// 비교용 정규화: 괄호 내용 제거, 소문자, 한글/영문/숫자만 남김
+function normalizeForMatch(str) {
+  return String(str || '')
+    .replace(/\(.*?\)|\[.*?\]/g, '')
+    .toLowerCase()
+    .replace(/[^0-9a-z가-힣]/g, '');
 }
 
-function calculateSimilarity(str1, str2) {
-  const words1 = str1.split(/\s+/);
-  const words2 = str2.split(/\s+/);
-  let commonWords = 0;
-  
-  for (const word of words1) {
-    if (word.length > 1 && words2.some(w => w.includes(word) || word.includes(w))) {
-      commonWords++;
+function bigrams(str) {
+  const set = new Map();
+  for (let i = 0; i < str.length - 1; i++) {
+    const g = str.slice(i, i + 2);
+    set.set(g, (set.get(g) || 0) + 1);
+  }
+  return set;
+}
+
+// 제목 유사도(0~1): 완전 일치 1, 포함 관계는 길이 비율 반영, 그 외 문자 bigram Dice 계수
+function titleSimilarity(target, candidate) {
+  const a = normalizeForMatch(target);
+  const b = normalizeForMatch(candidate);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (short.length >= 2 && long.includes(short)) {
+    return 0.5 + 0.5 * (short.length / long.length);
+  }
+
+  const ga = bigrams(a), gb = bigrams(b);
+  let inter = 0, total = 0;
+  ga.forEach((n, g) => { inter += Math.min(n, gb.get(g) || 0); total += n; });
+  gb.forEach(n => { total += n; });
+  return total ? (2 * inter) / total : 0;
+}
+
+// 저자 일치 여부: 입력 저자 이름 조각(2자 이상) 중 하나라도 결과 저자에 포함되면 일치
+function authorMatches(targetAuthor, itemAuthors) {
+  const tokens = String(targetAuthor || '')
+    .split(/[,;·&/、]|\s+외\s*|\s+/)
+    .map(normalizeForMatch)
+    .filter(t => t.length >= 2);
+  if (tokens.length === 0) return null; // 비교할 저자 정보 없음
+  const normAuthors = (itemAuthors || []).map(normalizeForMatch);
+  return tokens.some(t => normAuthors.some(a => a.includes(t) || t.includes(a) && a.length >= 2));
+}
+
+function scoreBookMatch(item, title, author) {
+  const info = item.volumeInfo || {};
+  const titleScore = titleSimilarity(title, info.title || '');
+  const authorOk = authorMatches(author, info.authors);
+  const total = authorOk === null ? titleScore : 0.75 * titleScore + 0.25 * (authorOk ? 1 : 0);
+  return {titleScore, total};
+}
+
+function findBestBookMatch(items, title, author = '') {
+  let best = null;
+  let bestTotal = 0;
+  for (const item of items) {
+    const {titleScore, total} = scoreBookMatch(item, title, author);
+    if (titleScore < BOOK_MATCH_MIN_TITLE || total < BOOK_MATCH_MIN_TOTAL) continue;
+    if (total > bestTotal) { bestTotal = total; best = item; }
+  }
+  return best; // 기준을 넘는 책이 없으면 null
+}
+
+// 정확한 조건 → 느슨한 조건 순으로 검색하며, 매칭 기준을 통과한 첫 결과를 사용
+async function findBookInGoogle(title, author = '') {
+  const t = String(title || '').replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/["']/g, ' ').trim();
+  const mainAuthor = String(author || '').split(/[,;·&/、]|\s+외\s*/)[0].replace(/["']/g, ' ').trim();
+  if (!t) return null;
+
+  const queries = [];
+  if (mainAuthor) queries.push(`intitle:"${t}" inauthor:"${mainAuthor}"`);
+  queries.push(`intitle:"${t}"`);
+  if (mainAuthor) queries.push(`${t} ${mainAuthor}`);
+
+  let lastError = null;
+  for (const q of queries) {
+    try {
+      const items = await fetchGoogleBooks(q);
+      if (!items) continue;
+      const match = findBestBookMatch(items, title, author);
+      if (match) return match;
+    } catch (err) {
+      lastError = err; // 이후 쿼리를 계속 시도
     }
   }
-  
-  return commonWords / Math.max(words1.length, words2.length);
+  if (lastError) throw lastError; // 모든 시도가 오류로 끝난 경우에만 오류 안내
+  return null;
 }
 
 function renderBookInfo(bookData, container) {

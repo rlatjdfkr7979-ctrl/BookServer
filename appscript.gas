@@ -828,11 +828,20 @@ function searchBooks(query) {
 
     const url = 'https://www.googleapis.com/books/v1/volumes'
       + '?q=' + encodeURIComponent(q)
-      + '&maxResults=5&langRestrict=ko'
+      + '&maxResults=10&langRestrict=ko'
+      + '&country=KR' // 서버 호출은 사용자 위치를 알 수 없어 403 unknownLocation이 나므로 국가 지정
       + '&key=' + encodeURIComponent(key);
     const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) {
-      return { success: false, error: 'Google Books HTTP ' + res.getResponseCode() };
+      // 구글이 알려주는 실패 사유(reason/message)를 함께 반환 (키 값은 노출하지 않음)
+      let detail = '';
+      try {
+        const err = JSON.parse(res.getContentText()).error || {};
+        const reason = (err.errors && err.errors[0] && err.errors[0].reason) || err.status || '';
+        detail = ' [' + reason + '] ' + String(err.message || '').slice(0, 200);
+      } catch (ignore) {}
+      Logger.log('🚨 Google Books 응답: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 500));
+      return { success: false, error: 'Google Books HTTP ' + res.getResponseCode() + detail };
     }
 
     const result = { success: true, items: JSON.parse(res.getContentText()).items || [] };
