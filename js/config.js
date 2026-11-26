@@ -16,6 +16,10 @@ const ENTRY_IDS = {
   renter: "entry.615776096"
 };
 
+// 도서 신청 알림을 받을 도서 담당자 (Dooray 멤버 이름 그대로 입력)
+// 비워두면 DM을 보내지 않고 신청만 저장됩니다. 담당자가 바뀌면 이 값만 수정하세요.
+const BOOK_MANAGER_NAME = "김지은";
+
 // 페이지네이션 설정
 const ITEMS_PER_PAGE = 20; // 페이지당 항목 수
 

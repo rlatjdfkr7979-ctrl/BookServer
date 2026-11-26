@@ -375,7 +375,7 @@ function doGet(e) {
     } else if (action === 'cancelReservation') {
       result = cancelReservationById(params.reservationId);
     } else if (action === 'saveBookRequest') {
-      result = saveBookRequest(params.bookTitle, params.author, params.publisher, params.reason, params.requesterName);
+      result = saveBookRequest(params.bookTitle, params.author, params.publisher, params.reason, params.requesterName, params.managerName);
     } else if (action === 'getBookRequests') {
       result = getBookRequests();
     } else if (action === 'updateBookRequestStatus') {
@@ -672,9 +672,45 @@ function getOrCreateBookRequestSheet() {
 }
 
 // =============================================================
+// ✅ Dooray DM 공통 발송 (이름으로 멤버 조회 후 direct-send)
+//    - 동명이인이 있으면 이름이 정확히 같은 멤버를 우선 선택
+// =============================================================
+function sendDoorayDM_(memberName, text) {
+  const DOORAY_TOKEN = PropertiesService.getScriptProperties().getProperty('DOORAY_TOKEN');
+  const BASE_URL = 'https://api.gov-dooray.com';
+  if (!DOORAY_TOKEN) return { success: false, error: 'DOORAY_TOKEN이 설정되지 않았습니다.' };
+
+  try {
+    const name = String(memberName || '').trim().slice(0, 50);
+    if (!name) return { success: false, error: '수신자 이름이 없습니다.' };
+
+    const memberRes = UrlFetchApp.fetch(
+      BASE_URL + '/common/v1/members?name=' + encodeURIComponent(name),
+      { headers: { Authorization: DOORAY_TOKEN }, muteHttpExceptions: true }
+    );
+    const members = (JSON.parse(memberRes.getContentText()).result) || [];
+    if (members.length === 0) return { success: false, error: '"' + name + '" 멤버를 찾을 수 없습니다.' };
+
+    const member = members.find(m => m.name === name) || members[0];
+    const dmRes = UrlFetchApp.fetch(BASE_URL + '/messenger/v1/channels/direct-send', {
+      method: 'post',
+      headers: { Authorization: DOORAY_TOKEN, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ organizationMemberId: member.id, text: String(text).slice(0, 3000) }),
+      muteHttpExceptions: true
+    });
+    const code = dmRes.getResponseCode();
+    return code >= 200 && code < 300
+      ? { success: true }
+      : { success: false, error: 'DM 발송 실패 (HTTP ' + code + ')' };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+// =============================================================
 // ✅ 도서 신청 저장
 // =============================================================
-function saveBookRequest(bookTitle, author, publisher, reason, requesterName) {
+function saveBookRequest(bookTitle, author, publisher, reason, requesterName, managerName) {
   try {
     if (!bookTitle || !requesterName) {
       return { success: false, error: '도서 제목과 신청자 이름은 필수입니다.' };
@@ -684,7 +720,28 @@ function saveBookRequest(bookTitle, author, publisher, reason, requesterName) {
     const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
     sheet.appendRow([requestId, now, bookTitle, author || '', publisher || '', reason || '', requesterName, '대기']);
     Logger.log('✅ 도서 신청 저장 완료: ' + bookTitle + ' / ' + requesterName);
-    return { success: true, requestId: requestId };
+
+    // 도서 담당자에게 DM 알림 (실패해도 신청 저장은 성공으로 처리)
+    let notified = false;
+    if (managerName) {
+      const text = '[도서 신청 알림] 새 도서 신청이 접수되었습니다.
+'
+        + '• 도서: ' + bookTitle + '
+'
+        + '• 저자: ' + (author || '-') + '
+'
+        + '• 출판사: ' + (publisher || '-') + '
+'
+        + '• 신청자: ' + requesterName + '
+'
+        + '• 사유: ' + (reason || '-') + '
+'
+        + '• 신청일시: ' + now;
+      const dm = sendDoorayDM_(managerName, text);
+      notified = dm.success;
+      if (!dm.success) Logger.log('⚠️ 담당자 DM 실패: ' + dm.error);
+    }
+    return { success: true, requestId: requestId, notified: notified };
   } catch (err) {
     Logger.log('🚨 saveBookRequest 오류: ' + err);
     return { success: false, error: err.toString() };

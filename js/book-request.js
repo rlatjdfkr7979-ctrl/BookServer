@@ -42,7 +42,8 @@ async function submitBookRequest() {
       author: author,
       publisher: publisher,
       reason: reason,
-      requesterName: requester
+      requesterName: requester,
+      managerName: (typeof BOOK_MANAGER_NAME !== 'undefined' ? BOOK_MANAGER_NAME : '')
     });
 
     if (result && result.success) {
